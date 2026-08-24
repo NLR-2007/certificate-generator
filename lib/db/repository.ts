@@ -72,6 +72,19 @@ function eventName(): string {
   return process.env.EVENT_NAME?.trim() || formConfig.title || "Smart India Hackathon 2026";
 }
 
+/**
+ * Where the roster currently in use came from, for the admin dashboard.
+ * Reset on every read so it always describes the latest one.
+ */
+export type RosterSource = "sheet" | "bundled";
+
+let lastRosterSource: RosterSource = "bundled";
+let lastRosterNote: string | null = null;
+
+export function getRosterStatus(): { source: RosterSource; note: string | null } {
+  return { source: lastRosterSource, note: lastRosterNote };
+}
+
 /** Bundled roster, shaped like sheet participants so callers see one type. */
 function bundledParticipants(): SheetParticipant[] {
   return INITIAL_PARTICIPANTS.map((p) => ({ ...p, revoked: false }));
@@ -82,18 +95,35 @@ export class SheetRepository implements DataRepository {
 
   private async roster(): Promise<SheetParticipant[]> {
     const url = rosterSheetUrl();
-    if (!url) return bundledParticipants();
+
+    if (!url) {
+      lastRosterSource = "bundled";
+      lastRosterNote = "No roster sheet is configured. Set PARTICIPANTS_SHEET_URL.";
+      return bundledParticipants();
+    }
 
     try {
       const rows = await fetchSheetRows(url);
       const participants = mapRowsToParticipants(rows, { eventName: eventName() });
-      return participants.length > 0 ? participants : bundledParticipants();
-    } catch (error) {
-      if (error instanceof SheetUnavailableError) {
-        console.warn("Roster sheet unreadable, using bundled roster:", error.message);
-      } else {
-        console.error("Roster sheet lookup failed, using bundled roster:", error);
+
+      if (participants.length > 0) {
+        lastRosterSource = "sheet";
+        lastRosterNote = null;
+        return participants;
       }
+
+      lastRosterSource = "bundled";
+      lastRosterNote =
+        rows.length === 0
+          ? "The roster sheet has no data rows yet, so the bundled roster is in use."
+          : `The roster sheet has ${rows.length} rows but no recognisable Registration ID and Name columns, so the bundled roster is in use.`;
+      return bundledParticipants();
+    } catch (error) {
+      const message =
+        error instanceof SheetUnavailableError ? error.message : "The roster sheet could not be read.";
+      console.warn("Roster sheet unavailable, using bundled roster:", message);
+      lastRosterSource = "bundled";
+      lastRosterNote = `${message} The bundled roster is in use.`;
       return bundledParticipants();
     }
   }

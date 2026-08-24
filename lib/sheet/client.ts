@@ -16,12 +16,28 @@ export type SheetRow = Record<string, string>;
 
 const CACHE_TTL_MS = 60_000;
 
+/**
+ * Google is a third party on the critical path of every lookup. Without a
+ * deadline a slow response hangs the serverless function until Vercel kills it,
+ * which surfaces to the browser as an HTML error page rather than a fallback.
+ */
+const FETCH_TIMEOUT_MS = 6_000;
+
 interface CacheEntry {
   rows: SheetRow[];
   fetchedAt: number;
 }
 
 const cache = new Map<string, CacheEntry>();
+
+/**
+ * Fetches already in flight, keyed by URL.
+ *
+ * A cold serverless instance serving several requests at once would otherwise
+ * ask Google for the same CSV once per request, which is both slow and a good
+ * way to get rate-limited. Concurrent callers share one fetch instead.
+ */
+const inFlight = new Map<string, Promise<SheetRow[]>>();
 
 /** Pulls the spreadsheet id out of any Google Sheets URL shape. */
 export function extractSpreadsheetId(sheetUrl: string): string | null {
@@ -79,11 +95,28 @@ export async function fetchSheetRows(
     return cached.rows;
   }
 
+  const pending = inFlight.get(csvUrl);
+  if (pending && !options.force) return pending;
+
+  const request = fetchAndParse(csvUrl).finally(() => inFlight.delete(csvUrl));
+  inFlight.set(csvUrl, request);
+  return request;
+}
+
+async function fetchAndParse(csvUrl: string): Promise<SheetRow[]> {
+
   let res: Response;
   try {
-    res = await fetch(csvUrl, { cache: "no-store", redirect: "follow" });
-  } catch {
-    throw new SheetUnavailableError("Could not reach Google Sheets.");
+    res = await fetch(csvUrl, {
+      cache: "no-store",
+      redirect: "follow",
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "TimeoutError";
+    throw new SheetUnavailableError(
+      timedOut ? "Google Sheets did not respond in time." : "Could not reach Google Sheets."
+    );
   }
 
   if (!res.ok) {

@@ -19,6 +19,7 @@ export default function AdminDashboardPage() {
   const [participants, setParticipants] = useState<any[]>([]);
   const [certificates, setCertificates] = useState<any[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [rosterStatus, setRosterStatus] = useState<{ source: string; note: string | null } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form Builder & Submissions State
@@ -84,38 +85,46 @@ export default function AdminDashboardPage() {
     }
   };
 
+  /**
+   * Loads the three admin panels.
+   *
+   * Each is settled independently: a failing certificates call must not blank
+   * the participants table too. Previously one rejection emptied all three,
+   * which read as "the database is empty" rather than "one request failed".
+   */
   const loadData = useCallback(async () => {
-    setLoadError(null);
-    try {
-      const [participantsRes, certificatesRes, formRes] = await Promise.all([
-        fetch("/api/admin/participants"),
-        fetch("/api/admin/certificates"),
-        fetch("/api/admin/form"),
-      ]);
+    const [participantsResult, certificatesResult, formResult] = await Promise.allSettled([
+      fetchJson<any>("/api/admin/participants"),
+      fetchJson<any>("/api/admin/certificates"),
+      fetchJson<any>("/api/admin/form"),
+    ]);
 
-      if (participantsRes.status === 401 || certificatesRes.status === 401) {
-        router.push("/admin/login");
-        return;
-      }
-
-      if (!participantsRes.ok || !certificatesRes.ok) {
-        throw new Error("Could not load admin data.");
-      }
-
-      const participantsData = await participantsRes.json();
-      const certificatesData = await certificatesRes.json();
-      const formData = await formRes.json();
-
-      setParticipants(participantsData.participants || []);
-      setCertificates(certificatesData.certificates || []);
-
-      if (formData.success) {
-        setFormConfig(formData.config);
-        setFormSubmissions(formData.submissions || []);
-      }
-    } catch {
-      setLoadError("Could not load the participant database. Please refresh and try again.");
+    const results = [participantsResult, certificatesResult, formResult];
+    if (results.some((r) => r.status === "rejected" && (r.reason as any)?.status === 401)) {
+      router.push("/admin/login");
+      return;
     }
+
+    if (participantsResult.status === "fulfilled") {
+      setParticipants(participantsResult.value.participants || []);
+      setRosterStatus(participantsResult.value.roster || null);
+    }
+    if (certificatesResult.status === "fulfilled") {
+      setCertificates(certificatesResult.value.certificates || []);
+    }
+    if (formResult.status === "fulfilled" && formResult.value.success) {
+      setFormConfig(formResult.value.config);
+      setFormSubmissions(formResult.value.submissions || []);
+    }
+
+    // Report what actually failed, so an empty dashboard is never mistaken for
+    // an empty roster.
+    const failures = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+    setLoadError(
+      failures.length === 0
+        ? null
+        : failures[0].reason?.message || "Could not load the admin data. Please refresh and try again."
+    );
   }, [router]);
 
   useEffect(() => {
@@ -138,7 +147,7 @@ export default function AdminDashboardPage() {
 
     const interval = setInterval(() => {
       if (!cancelled) loadData();
-    }, 3000);
+    }, 30000);
 
     return () => {
       cancelled = true;
@@ -398,7 +407,7 @@ export default function AdminDashboardPage() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Live 3s Sync</span>
+            <span>Auto-refresh 30s</span>
           </div>
 
           <Button
@@ -415,12 +424,19 @@ export default function AdminDashboardPage() {
             Admin Authenticated
           </Badge>
           <Badge
-            variant="success"
+            variant={rosterStatus?.source === "bundled" ? "warning" : "success"}
             className="px-3 py-1 text-xs"
-            title="The roster Google Sheet is the source of truth. Refresh to pull the latest rows."
+            title={
+              rosterStatus?.note ||
+              "The roster Google Sheet is the source of truth. Refresh to pull the latest rows."
+            }
           >
-            <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-emerald-500 animate-pulse" />
-            Google Sheet connected
+            <span
+              className={`w-1.5 h-1.5 rounded-full mr-1.5 animate-pulse ${
+                rosterStatus?.source === "bundled" ? "bg-amber-500" : "bg-emerald-500"
+              }`}
+            />
+            {rosterStatus?.source === "bundled" ? "Using bundled roster" : "Google Sheet connected"}
           </Badge>
           <Button
             variant="outline"
@@ -435,11 +451,19 @@ export default function AdminDashboardPage() {
       </div>
 
       {loadError && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-xs text-red-600 dark:text-red-400 font-semibold flex items-center justify-between">
-          <span>{loadError}</span>
-          <Button size="sm" variant="outline" onClick={loadData} className="text-[11px] py-1 px-3">
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-xs text-red-600 dark:text-red-400 font-semibold flex items-center justify-between gap-3">
+          <span className="leading-relaxed">{loadError}</span>
+          <Button size="sm" variant="outline" onClick={loadData} className="text-[11px] py-1 px-3 shrink-0">
             Retry
           </Button>
+        </div>
+      )}
+
+      {/* Explains a roster that is not the sheet, so an unexpected list is never a mystery. */}
+      {rosterStatus?.source === "bundled" && rosterStatus.note && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-xs text-amber-700 dark:text-amber-400 font-semibold flex items-start gap-2">
+          <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+          <span className="leading-relaxed">{rosterStatus.note}</span>
         </div>
       )}
 
