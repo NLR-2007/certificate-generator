@@ -290,24 +290,46 @@ export default function AdminDashboardPage() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              handleAdminGenerateCertificate(adminGenId);
+              handleAdminGenerateCertificate(adminGenId, adminGenName);
             }}
-            className="flex flex-col sm:flex-row gap-3"
+            className="space-y-3"
           >
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Input
+                placeholder="Enter Registration ID / Roll Number (e.g. 2520090002)..."
+                value={adminGenId}
+                onChange={(e) => {
+                  setAdminGenId(e.target.value);
+                  setNeedsName(false);
+                  setGenerateError(null);
+                }}
+                className="flex-1"
+              />
+              <Button
+                type="submit"
+                isLoading={generatingId === adminGenId && !!adminGenId}
+                className="bg-slate-900 dark:bg-white text-white dark:text-black font-bold px-6 hover:bg-slate-800 dark:hover:bg-gray-200"
+              >
+                <FileCheck className="w-4 h-4 mr-2 text-blue-300 dark:text-blue-600" />
+                Generate Certificate
+              </Button>
+            </div>
+
             <Input
-              placeholder="Enter Registration ID / Roll Number (e.g. 2520090002)..."
-              value={adminGenId}
-              onChange={(e) => setAdminGenId(e.target.value)}
-              className="flex-1"
+              placeholder="Participant name (optional - overrides the name on file)"
+              value={adminGenName}
+              onChange={(e) => setAdminGenName(e.target.value)}
+              error={needsName ? "This roll number is not on file. Enter a name to issue anyway." : undefined}
+              helperText={
+                needsName
+                  ? undefined
+                  : "Leave blank to use the official name from the database. Admins may issue for any roll number, eligible or not."
+              }
             />
-            <Button
-              type="submit"
-              isLoading={generatingId === adminGenId && !!adminGenId}
-              className="bg-slate-900 dark:bg-white text-white dark:text-black font-bold px-6 hover:bg-slate-800 dark:hover:bg-gray-200"
-            >
-              <FileCheck className="w-4 h-4 mr-2 text-blue-300 dark:text-blue-600" />
-              Generate Certificate
-            </Button>
+
+            {generateError && !needsName && (
+              <p className="text-xs font-medium text-red-600 dark:text-red-400">{generateError}</p>
+            )}
           </form>
 
           {/* GENERATED CERTIFICATE PREVIEW MODAL / BANNER */}

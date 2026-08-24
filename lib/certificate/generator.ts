@@ -106,7 +106,7 @@ export async function generateCertificatePDF(options: GenerateOptions): Promise<
 
   // 5. Draw Certificate ID & Issue Date neatly beside QR Code (stopping before signature line at X=165)
   const detailsX = qrX + qrSize + 8; // X = 94
-  const detailsY = qrY + qrSize - 10; // Y = 64
+  const detailsY = qrY + qrSize - 24; // Y = 50 (Sit cleanly below horizontal line)
 
   page.drawText(`Certificate ID: ${certificateId}`, {
     x: detailsX,
