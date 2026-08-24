@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/admin/guard";
-import { mockDb, Certificate, Participant } from "@/lib/db/mock-store";
+import { Certificate, Participant } from "@/lib/db/mock-store";
 import { generateCertificatePDF, generateCertificateId, getBaseUrl } from "@/lib/certificate/generator";
 import { UnrenderableNameError } from "@/lib/certificate/text";
+import { DataRepository, getRepository } from "@/lib/db/repository";
 
 const DEFAULT_EVENT = "Smart India Hackathon 2026";
 
@@ -28,6 +29,7 @@ const AdminGenerateSchema = z.object({
  * The public route keeps its restrictions; this endpoint is gated by requireAdmin.
  */
 export async function POST(req: NextRequest) {
+  const db = getRepository();
   try {
     const denied = await requireAdmin(req);
     if (denied) return denied;
@@ -41,7 +43,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { registrationId, participantName, eventName } = validation.data;
-    const participant = mockDb.findParticipantByRegId(registrationId);
+    const participant = await db.getParticipant(registrationId);
     const name = participantName || participant?.name;
 
     if (!name) {
@@ -74,17 +76,17 @@ export async function POST(req: NextRequest) {
         created_at: now,
         updated_at: now,
       };
-      mockDb.upsertParticipant(created);
+      await db.upsertParticipant(created);
       participantCreated = true;
     } else if (participantName && participantName !== participant.name) {
-      mockDb.upsertParticipant({ ...participant, name, event_name: event, updated_at: now });
+      await db.upsertParticipant({ ...participant, name, event_name: event, updated_at: now });
     }
 
-    const existingCert = mockDb.findCertificateByRegId(registrationId);
+    const existingCert = await db.getCertificateByRegistrationId(registrationId);
 
     // Re-issuing keeps the same public certificate ID, so a participant never
     // ends up with two valid certificates and existing QR codes keep resolving.
-    const certificateId = existingCert?.certificate_id ?? uniqueCertificateId();
+    const certificateId = existingCert?.certificate_id ?? (await uniqueCertificateId(db));
     const issueDate = existingCert?.issue_date ?? now;
 
     const pdfBuffer = await generateCertificatePDF({
@@ -98,7 +100,7 @@ export async function POST(req: NextRequest) {
     const record: Certificate = {
       id: existingCert?.id ?? `cert-${Date.now()}`,
       certificate_id: certificateId,
-      participant_id: mockDb.findParticipantByRegId(registrationId)?.id,
+      participant_id: (await db.getParticipant(registrationId))?.id,
       participant_name: name,
       registration_id: registrationId,
       event_name: event,
@@ -109,7 +111,7 @@ export async function POST(req: NextRequest) {
       created_at: existingCert?.created_at ?? now,
     };
 
-    mockDb.saveCertificate(record);
+    await db.saveCertificate(record);
 
     return NextResponse.json({
       success: true,
@@ -138,9 +140,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function uniqueCertificateId(): string {
+async function uniqueCertificateId(db: DataRepository): Promise<string> {
   let id = generateCertificateId("SIH26");
-  for (let attempt = 0; attempt < 5 && mockDb.findCertificateById(id); attempt++) {
+  for (let attempt = 0; attempt < 5 && (await db.getCertificateById(id)); attempt++) {
     id = generateCertificateId("SIH26");
   }
   return id;

@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { z } from "zod";
-import { mockDb, Certificate } from "@/lib/db/mock-store";
+import { Certificate } from "@/lib/db/mock-store";
 import { generateCertificatePDF, generateCertificateId, getBaseUrl } from "@/lib/certificate/generator";
 import { UnrenderableNameError } from "@/lib/certificate/text";
+import { getRepository } from "@/lib/db/repository";
 
 const GenerateSchema = z.object({
   registrationId: z.string().min(1, "Registration ID is required").max(50),
 });
 
 export async function POST(req: NextRequest) {
+  const db = getRepository();
   try {
     const body = await req.json();
     const validation = GenerateSchema.safeParse(body);
@@ -25,7 +27,7 @@ export async function POST(req: NextRequest) {
     const baseUrl = getBaseUrl(req);
 
     // 1. Server-side Query Participant Details (Never trust client-supplied names!)
-    const participant = mockDb.findParticipantByRegId(registrationId);
+    const participant = await db.getParticipant(registrationId);
 
     if (!participant) {
       return NextResponse.json(
@@ -43,7 +45,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Duplicate Prevention Check
-    const existingCert = mockDb.findCertificateByRegId(registrationId);
+    const existingCert = await db.getCertificateByRegistrationId(registrationId);
     if (existingCert) {
       // Re-generate current PDF for preview/download
       const pdfBuffer = await generateCertificatePDF({
@@ -68,7 +70,7 @@ export async function POST(req: NextRequest) {
 
     // 4. Generate Unique Certificate ID & Cryptographic Verification Token
     let certificateId = generateCertificateId("SIH26");
-    for (let attempt = 0; attempt < 5 && mockDb.findCertificateById(certificateId); attempt++) {
+    for (let attempt = 0; attempt < 5 && await db.getCertificateById(certificateId); attempt++) {
       certificateId = generateCertificateId("SIH26");
     }
     const verificationToken = `vt_${randomBytes(24).toString("hex")}`;
@@ -97,7 +99,7 @@ export async function POST(req: NextRequest) {
       created_at: issueDateStr,
     };
 
-    mockDb.saveCertificate(newCertRecord);
+    await db.saveCertificate(newCertRecord);
 
     return NextResponse.json({
       success: true,

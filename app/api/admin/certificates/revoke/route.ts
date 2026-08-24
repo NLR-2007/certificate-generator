@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/admin/guard";
-import { mockDb } from "@/lib/db/mock-store";
+import { getRepository } from "@/lib/db/repository";
 
 const RevokeSchema = z.object({
   certificateId: z.string().min(1, "Certificate ID required").max(64),
@@ -9,6 +9,7 @@ const RevokeSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const db = getRepository();
   try {
     const denied = await requireAdmin(req);
     if (denied) return denied;
@@ -23,13 +24,13 @@ export async function POST(req: NextRequest) {
 
     const { certificateId, status } = validation.data;
 
-    if (!mockDb.updateCertificateStatus(certificateId, status)) {
+    if (!await db.updateCertificateStatus(certificateId, status)) {
       return NextResponse.json({ error: "Certificate record not found." }, { status: 404 });
     }
 
     return NextResponse.json({
       success: true,
-      certificateId: mockDb.findCertificateById(certificateId)!.certificate_id,
+      certificateId: (await db.getCertificateById(certificateId))!.certificate_id,
       status,
     });
   } catch {

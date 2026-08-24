@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseAndValidateCSV, generateRejectedRowsCSV } from "@/lib/admin/csv";
 import { requireAdmin } from "@/lib/admin/guard";
-import { mockDb, Participant } from "@/lib/db/mock-store";
+import { Participant } from "@/lib/db/mock-store";
+import { getRepository } from "@/lib/db/repository";
 
 const MAX_CSV_BYTES = 5 * 1024 * 1024; // 5 MB
 
 export async function POST(req: NextRequest) {
+  const db = getRepository();
   try {
     const denied = await requireAdmin(req);
     if (denied) return denied;
@@ -30,12 +32,12 @@ export async function POST(req: NextRequest) {
     let updatedCount = 0;
     const now = new Date().toISOString();
 
-    result.validRows.forEach((row) => {
-      const existing = mockDb.findParticipantByRegId(row.registration_id);
+    for (const row of result.validRows) {
+      const existing = await db.getParticipant(row.registration_id);
 
       if (existing) {
         // Persist the merged record back into the store rather than mutating a copy.
-        mockDb.upsertParticipant({
+        await db.upsertParticipant({
           ...existing,
           name: row.name,
           email: row.email || existing.email,
@@ -60,10 +62,10 @@ export async function POST(req: NextRequest) {
           created_at: now,
           updated_at: now,
         };
-        mockDb.upsertParticipant(newParticipant);
+        await db.upsertParticipant(newParticipant);
         createdCount++;
       }
-    });
+    }
 
     const rejectedCsv =
       result.invalidRows.length > 0 ? generateRejectedRowsCSV(result.invalidRows) : null;

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Sparkles, CheckCircle2, Rocket, ArrowRight, FileText } from "lucide-react";
+import { Sparkles, CheckCircle2, Rocket, ArrowRight, Users, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
@@ -10,20 +10,31 @@ import { FormConfig, FormField } from "@/lib/db/mock-store";
 
 export default function HackathonRegisterPage() {
   const [formConfig, setFormConfig] = useState<FormConfig | null>(null);
-  const [formData, setFormData] = useState<Record<string, string>>({});
+  const [formData, setFormData] = useState<Record<string, string>>({
+    team_member_count: "1",
+  });
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [submittedPass, setSubmittedPass] = useState<any | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    // Check if user already submitted a response
+    const savedPass = localStorage.getItem("klh_registered_pass");
+    if (savedPass) {
+      try {
+        setSubmittedPass(JSON.parse(savedPass));
+      } catch {
+        // ignore JSON parse error
+      }
+    }
+
     fetch("/api/register")
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.config) {
           setFormConfig(data.config);
-          // Initialize form fields state
-          const initial: Record<string, string> = {};
+          const initial: Record<string, string> = { team_member_count: "1" };
           data.config.fields.forEach((f: FormField) => {
             initial[f.id] = f.type === "select" && f.options?.[0] ? f.options[0] : "";
           });
@@ -55,11 +66,14 @@ export default function HackathonRegisterPage() {
         throw new Error(result.error || "Submission failed.");
       }
 
-      setSubmittedPass({
+      const passObj = {
         submissionId: result.submissionId,
         formData,
         timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
-      });
+      };
+
+      localStorage.setItem("klh_registered_pass", JSON.stringify(passObj));
+      setSubmittedPass(passObj);
     } catch (err: any) {
       setError(err.message || "Something went wrong.");
     } finally {
@@ -75,6 +89,9 @@ export default function HackathonRegisterPage() {
       </div>
     );
   }
+
+  const maxMembers = formConfig?.maxTeamMembers || 6;
+  const memberCount = parseInt(formData.team_member_count || "1", 10);
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8">
@@ -110,6 +127,26 @@ export default function HackathonRegisterPage() {
                   <p className="font-bold text-white text-sm">{submittedPass.formData[f.id] || "N/A"}</p>
                 </div>
               ))}
+
+              {/* DISPLAY REGISTERED TEAM MEMBERS */}
+              {memberCount > 1 && (
+                <div className="md:col-span-2 border-t border-slate-800 pt-4 space-y-2">
+                  <span className="text-xs text-emerald-400 uppercase font-bold tracking-wider flex items-center">
+                    <Users className="w-4 h-4 mr-1.5" /> Registered Team Members ({memberCount})
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    {Array.from({ length: memberCount - 1 }).map((_, idx) => {
+                      const num = idx + 2;
+                      return (
+                        <div key={num} className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
+                          <p className="font-bold text-white">Member {num}: {submittedPass.formData[`member_${num}_name`] || "N/A"}</p>
+                          <p className="text-[11px] font-mono text-blue-400">Roll ID: {submittedPass.formData[`member_${num}_id`] || "N/A"}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -119,13 +156,9 @@ export default function HackathonRegisterPage() {
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               </Link>
-              <Button
-                variant="outline"
-                onClick={() => setSubmittedPass(null)}
-                className="w-full sm:w-auto text-xs text-slate-400 border-slate-700 hover:bg-slate-800"
-              >
-                Submit Another Response
-              </Button>
+              <div className="text-xs text-slate-400 font-semibold px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800">
+                ✓ Response Submitted (Limit: 1 Response Per Student)
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -138,11 +171,11 @@ export default function HackathonRegisterPage() {
               Registration Details
             </CardTitle>
             <CardDescription>
-              Please enter accurate information. Response details will be saved directly for administrative review.
+              Please enter accurate information. All team members entered will be registered for certificates.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {formConfig?.fields.map((f) => {
                   const isFullWidth = f.type === "textarea" || f.id === "project_title" || f.id === "team_name";
@@ -191,6 +224,67 @@ export default function HackathonRegisterPage() {
                 })}
               </div>
 
+              {/* DYNAMIC TEAM MEMBERS SECTION (ADMIN CONTROLLABLE MAX MEMBERS) */}
+              {formConfig?.enableTeamMembers !== false && (
+                <div className="border-t border-slate-200 dark:border-slate-800 pt-6 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center">
+                        <Users className="w-4 h-4 text-blue-500 mr-2" /> Total Team Members (Including Leader)
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Admin allowed team limit: Up to {maxMembers} members per team.
+                      </p>
+                    </div>
+
+                    <select
+                      value={formData.team_member_count || "1"}
+                      onChange={(e) => handleChange("team_member_count", e.target.value)}
+                      className="flex h-10 w-44 rounded-md border border-blue-500/50 bg-white dark:bg-slate-950 px-3 py-2 text-sm font-bold text-blue-600 dark:text-blue-400 focus:outline-none"
+                    >
+                      {Array.from({ length: maxMembers }).map((_, i) => (
+                        <option key={i + 1} value={String(i + 1)}>
+                          {i + 1} {i === 0 ? "Member (Solo/Leader)" : "Members"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* DYNAMIC TEAM MEMBER INPUT FIELDS */}
+                  {memberCount > 1 && (
+                    <div className="space-y-4 pt-2">
+                      {Array.from({ length: memberCount - 1 }).map((_, idx) => {
+                        const memberNum = idx + 2;
+                        return (
+                          <div
+                            key={memberNum}
+                            className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3"
+                          >
+                            <h4 className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider flex items-center">
+                              <UserPlus className="w-4 h-4 mr-1.5" /> Team Member {memberNum} Details
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <Input
+                                placeholder={`Member ${memberNum} Full Name *`}
+                                value={formData[`member_${memberNum}_name`] || ""}
+                                onChange={(e) => handleChange(`member_${memberNum}_name`, e.target.value)}
+                                required
+                              />
+                              <Input
+                                placeholder={`Member ${memberNum} Roll ID / Reg ID *`}
+                                value={formData[`member_${memberNum}_id`] || ""}
+                                onChange={(e) => handleChange(`member_${memberNum}_id`, e.target.value)}
+                                required
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {error && (
                 <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-500 font-semibold">
                   {error}
@@ -202,7 +296,7 @@ export default function HackathonRegisterPage() {
                 isLoading={loading}
                 className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-gray-200 font-bold py-3 text-base"
               >
-                <span>Submit Registration</span>
+                <span>Submit Hackathon Registration</span>
                 <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
             </form>

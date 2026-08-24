@@ -45,6 +45,10 @@ export interface FormConfig {
   title: string;
   description: string;
   fields: FormField[];
+  enableTeamMembers?: boolean;
+  maxTeamMembers?: number;
+  googleSheetUrl?: string;
+  googleSheetWebhookUrl?: string;
 }
 
 export interface FormSubmission {
@@ -56,6 +60,10 @@ export interface FormSubmission {
 export const DEFAULT_FORM_CONFIG: FormConfig = {
   title: "Hackathon Registration Form",
   description: "Fill out your details to enter upcoming Hackathons & Sprints at KLH Bachupally.",
+  enableTeamMembers: true,
+  maxTeamMembers: 6,
+  googleSheetUrl: "https://docs.google.com/spreadsheets/d/1eZeQ_X89nSR_fma6eSbVaOuyXaZ8-ffO1KAaWoXFyCU/edit?usp=sharing",
+  googleSheetWebhookUrl: "https://script.google.com/macros/s/AKfycbxdft2JE0jtNMQBjCDrkglTsg3Ju3jXzy11lY7vC8MzRCUJzT7Ui_HglLnLvChJZLfi/exec",
   fields: [
     { id: "name", label: "Full Name (As per College Records)", type: "text", required: true, placeholder: "e.g. MARRI HRUTHIKA" },
     { id: "registration_id", label: "Roll Number / Reg ID", type: "text", required: true, placeholder: "e.g. 2520090002" },

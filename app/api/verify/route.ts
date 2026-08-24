@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { mockDb } from "@/lib/db/mock-store";
+import { getRepository } from "@/lib/db/repository";
 
 export async function GET(req: NextRequest) {
+  const db = getRepository();
   try {
     const { searchParams } = new URL(req.url);
     const certIdParam = searchParams.get("certificateId");
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const cert = mockDb.findCertificateById(certIdParam);
+    const cert = await db.getCertificateById(certIdParam);
 
     if (!cert) {
       return NextResponse.json({ found: false });

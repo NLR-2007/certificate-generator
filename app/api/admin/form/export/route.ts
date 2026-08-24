@@ -1,10 +1,14 @@
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 import { NextRequest, NextResponse } from "next/server";
-import { mockDb } from "@/lib/db/mock-store";
+import { getRepository } from "@/lib/db/repository";
 
 export async function GET(req: NextRequest) {
+  const db = getRepository();
   try {
-    const config = mockDb.getFormConfig();
-    const submissions = mockDb.getFormSubmissions();
+    const config = await db.getFormConfig();
+    const submissions = await db.getFormSubmissions();
 
     // Headers: Submission ID, Submitted At, followed by all dynamic form field labels
     const headers = ["Submission ID", "Submitted At", ...config.fields.map((f) => f.label)];

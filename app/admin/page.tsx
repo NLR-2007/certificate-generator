@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Users, FileCheck, Upload, Layout, ShieldAlert, Plus, Search, LogOut, CheckCircle2, Download, Eye, Sparkles, FileSpreadsheet, Trash2, Edit, Save, PlusCircle } from "lucide-react";
+import { Users, FileCheck, Upload, Layout, ShieldAlert, Plus, Search, LogOut, CheckCircle2, Download, Eye, Sparkles, FileSpreadsheet, Trash2, Edit, Save, PlusCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
+import { useRealtimeCollection } from "@/lib/hooks/useRealtimeCollection";
 import { FormConfig, FormField, FormSubmission } from "@/lib/db/mock-store";
 
 export default function AdminDashboardPage() {
@@ -18,6 +19,8 @@ export default function AdminDashboardPage() {
   const [participants, setParticipants] = useState<any[]>([]);
   const [certificates, setCertificates] = useState<any[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [firebaseToken, setFirebaseToken] = useState<string | null>(null);
+  const [backend, setBackend] = useState<"firestore" | "memory">("memory");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form Builder & Submissions State
@@ -101,6 +104,8 @@ export default function AdminDashboardPage() {
           router.push("/admin/login");
           return;
         }
+        setBackend(session.backend === "firestore" ? "firestore" : "memory");
+        setFirebaseToken(session.firebaseToken ?? null);
         setAuthed(true);
         loadData();
       })
@@ -108,8 +113,13 @@ export default function AdminDashboardPage() {
         if (!cancelled) router.push("/admin/login");
       });
 
+    const interval = setInterval(() => {
+      if (!cancelled) loadData();
+    }, 3000);
+
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, [router, loadData]);
 
@@ -308,7 +318,21 @@ export default function AdminDashboardPage() {
     }
   };
 
+  // Live Firestore views. Each returns null when realtime is unavailable, in
+  // which case the fetched state above remains the source of truth.
+  const liveCertificates = useRealtimeCollection<any>(
+    backend === "firestore" ? "certificates" : null,
+    firebaseToken
+  );
+  const liveSubmissions = useRealtimeCollection<any>(
+    backend === "firestore" ? "formSubmissions" : null,
+    firebaseToken
+  );
+
   if (!authed) return null;
+
+  const certificatesView = liveCertificates ?? certificates;
+  const isLive = liveCertificates !== null;
 
   const filteredParticipants = participants.filter(
     (p) =>
@@ -317,7 +341,9 @@ export default function AdminDashboardPage() {
       (p.team_name && p.team_name.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const filteredSubmissions = formSubmissions.filter((sub) => {
+  const submissionsView: FormSubmission[] = liveSubmissions ?? formSubmissions;
+
+  const filteredSubmissions = submissionsView.filter((sub) => {
     const jsonStr = JSON.stringify(sub.data).toLowerCase();
     return jsonStr.includes(formSearch.toLowerCase());
   });
@@ -335,9 +361,32 @@ export default function AdminDashboardPage() {
           </h1>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Live 3s Sync</span>
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadData}
+            className="text-xs text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+          >
+            <RefreshCw className="w-3.5 h-3.5 mr-1.5 text-blue-500" />
+            Refresh Data
+          </Button>
+
           <Badge variant="success" className="px-3 py-1 text-xs">
             Admin Authenticated
+          </Badge>
+          <Badge variant={isLive ? "info" : "warning"} className="px-3 py-1 text-xs" title={
+            isLive
+              ? "Connected to Firestore - this dashboard updates live for every admin."
+              : "In-memory storage: data is per-instance and lost on restart. Configure Firebase to enable live sync."
+          }>
+            <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${isLive ? "bg-blue-500 animate-pulse" : "bg-amber-500"}`} />
+            {isLive ? "Live sync" : "Local only"}
           </Badge>
           <Button
             variant="outline"
@@ -469,7 +518,7 @@ export default function AdminDashboardPage() {
             <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
           </div>
           <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">
-            {formSubmissions.length}
+            {submissionsView.length}
           </p>
           <span className="text-[10px] text-slate-500">Hackathon Form Responses</span>
         </div>
@@ -491,7 +540,7 @@ export default function AdminDashboardPage() {
             <ShieldAlert className="w-4 h-4 text-red-500" />
           </div>
           <p className="text-2xl font-extrabold text-red-600 dark:text-red-400 font-mono">
-            {certificates.filter((c) => c.status === "REVOKED").length}
+            {certificatesView.filter((c) => c.status === "REVOKED").length}
           </p>
           <span className="text-[10px] text-slate-500">Invalidated records</span>
         </div>
@@ -520,7 +569,7 @@ export default function AdminDashboardPage() {
           }`}
         >
           <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
-          <span>Form Builder & Responses ({formSubmissions.length})</span>
+          <span>Form Builder & Responses ({submissionsView.length})</span>
         </button>
 
         <button
@@ -532,7 +581,7 @@ export default function AdminDashboardPage() {
           }`}
         >
           <FileCheck className="w-4 h-4" />
-          <span>Issued Certificates ({certificates.length})</span>
+          <span>Issued Certificates ({certificatesView.length})</span>
         </button>
 
         <button
@@ -655,6 +704,133 @@ export default function AdminDashboardPage() {
                     </div>
                   </div>
 
+                  {/* GOOGLE SHEETS INTEGRATION HUB */}
+                  <div className="p-4 bg-emerald-950/30 border border-emerald-500/30 rounded-xl space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center">
+                          <FileSpreadsheet className="w-4 h-4 mr-1.5 text-emerald-400" /> Connected Google Sheet
+                        </h4>
+                        <p className="text-xs text-slate-400">
+                          Incoming student registration responses will sync with your Google Sheet.
+                        </p>
+                      </div>
+
+                      <a
+                        href={formConfig.googleSheetUrl || "https://docs.google.com/spreadsheets/d/1eZeQ_X89nSR_fma6eSbVaOuyXaZ8-ffO1KAaWoXFyCU/edit?usp=sharing"}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Button size="sm" variant="success" className="text-xs font-bold">
+                          <Eye className="w-3.5 h-3.5 mr-1" /> Open Connected Google Sheet ↗
+                        </Button>
+                      </a>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-300">Google Sheet URL</label>
+                        <Input
+                          value={formConfig.googleSheetUrl || ""}
+                          onChange={(e) => setFormConfig({ ...formConfig, googleSheetUrl: e.target.value })}
+                          placeholder="https://docs.google.com/spreadsheets/d/..."
+                          className="text-xs font-mono"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-300">Google Apps Script Webhook URL (For Direct Live Auto-Append)</label>
+                        <Input
+                          value={formConfig.googleSheetWebhookUrl || ""}
+                          onChange={(e) => setFormConfig({ ...formConfig, googleSheetWebhookUrl: e.target.value })}
+                          placeholder="https://script.google.com/macros/s/.../exec"
+                          className="text-xs font-mono border-blue-500/40"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 1-MINUTE APPS SCRIPT SETUP HELPER */}
+                    <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 text-xs space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <span className="font-bold text-emerald-400 flex items-center">
+                          <Sparkles className="w-3.5 h-3.5 mr-1" /> 1-Minute Setup: Connect Live Auto-Append to Google Sheet
+                        </span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const code = `function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var data = JSON.parse(e.postData.contents);
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(["Timestamp", "Leader Name", "Leader Roll ID", "Email", "Phone", "Department", "Team Name", "No. of Members", "All Team Member Names & IDs", "Project Title"]);
+  }
+  sheet.appendRow([
+    new Date(),
+    data.name || "",
+    data.registration_id || "",
+    data.email || "",
+    data.phone || "",
+    data.department || "",
+    data.team_name || "",
+    data.team_member_count || 1,
+    data.team_members || "",
+    data.project_title || ""
+  ]);
+  return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
+}`;
+                            navigator.clipboard.writeText(code);
+                            alert("Google Apps Script Code Copied to Clipboard!");
+                          }}
+                          className="text-[11px] font-bold text-blue-400 border-blue-500/30 hover:bg-blue-950"
+                        >
+                          Copy Apps Script Code
+                        </Button>
+                      </div>
+                      <ol className="text-slate-300 text-[11px] space-y-1 list-decimal list-inside pl-1">
+                        <li>Open your Google Sheet (<a href="https://docs.google.com/spreadsheets/d/1eZeQ_X89nSR_fma6eSbVaOuyXaZ8-ffO1KAaWoXFyCU/edit?usp=sharing" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">Sheet Link</a>) and click <strong>Extensions &gt; Apps Script</strong>.</li>
+                        <li>Paste the copied code and click <strong>Deploy &gt; New Deployment</strong>.</li>
+                        <li>Choose type: <strong>Web app</strong>, set <em>Who has access</em> to <strong>&quot;Anyone&quot;</strong>, and click <strong>Deploy</strong>.</li>
+                        <li>Copy the generated Web App URL and paste it into the field above!</li>
+                      </ol>
+                    </div>
+                  </div>
+
+                  {/* ADMIN TEAM MEMBERS CONTROL */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Dynamic Team Member Inputs</label>
+                      <div className="flex items-center space-x-2 pt-1">
+                        <input
+                          type="checkbox"
+                          id="enableTeam"
+                          checked={formConfig.enableTeamMembers !== false}
+                          onChange={(e) => setFormConfig({ ...formConfig, enableTeamMembers: e.target.checked })}
+                          className="w-4 h-4 text-blue-600 rounded cursor-pointer"
+                        />
+                        <label htmlFor="enableTeam" className="text-xs font-semibold text-slate-900 dark:text-slate-200 cursor-pointer">
+                          Enable Dynamic Team Member Fields on Registration Form
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Max Allowed Team Members Limit (Controlled by Admin)</label>
+                      <select
+                        value={formConfig.maxTeamMembers || 6}
+                        onChange={(e) => setFormConfig({ ...formConfig, maxTeamMembers: parseInt(e.target.value, 10) })}
+                        className="flex h-10 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-black px-3 py-2 text-xs font-bold text-slate-900 dark:text-slate-100"
+                      >
+                        {Array.from({ length: 10 }).map((_, i) => (
+                          <option key={i + 1} value={i + 1}>
+                            Max {i + 1} {i === 0 ? "Member (Solo Only)" : "Members per Team"}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
                   {/* ACTIVE FIELDS LIST */}
                   <div className="space-y-2 pt-2">
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Active Form Fields ({formConfig.fields.length})</span>
@@ -729,7 +905,7 @@ export default function AdminDashboardPage() {
               <div>
                 <CardTitle className="flex items-center text-lg">
                   <FileSpreadsheet className="w-5 h-5 text-emerald-500 mr-2" />
-                  Student Form Submissions ({formSubmissions.length})
+                  Student Form Submissions ({submissionsView.length})
                 </CardTitle>
                 <CardDescription>
                   View live responses submitted by students and export to Excel/CSV.
@@ -813,14 +989,14 @@ export default function AdminDashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 bg-white dark:bg-slate-900/40">
-                  {certificates.length === 0 ? (
+                  {certificatesView.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
                         No certificates generated yet in this session. Use the Generate Certificate button above.
                       </td>
                     </tr>
                   ) : (
-                    certificates.map((c) => (
+                    certificatesView.map((c) => (
                       <tr key={c.certificate_id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                         <td className="px-4 py-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">
                           {c.certificate_id}

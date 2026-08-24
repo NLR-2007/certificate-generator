@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { mockDb } from "@/lib/db/mock-store";
 import { getBaseUrl } from "@/lib/certificate/generator";
+import { getRepository } from "@/lib/db/repository";
 
 const QuerySchema = z.object({
   registrationId: z.string().min(1, "Registration ID is required").max(50),
 });
 
 export async function GET(req: NextRequest) {
+  const db = getRepository();
   try {
     const { searchParams } = new URL(req.url);
     const regIdParam = searchParams.get("registrationId");
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
     const baseUrl = getBaseUrl(req);
 
     // 1. Query database / mock store
-    const participant = mockDb.findParticipantByRegId(regId);
+    const participant = await db.getParticipant(regId);
 
     if (!participant) {
       return NextResponse.json(
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
     }
 
     // 2. Check existing certificate if already generated
-    const existingCertificate = mockDb.findCertificateByRegId(regId);
+    const existingCertificate = await db.getCertificateByRegistrationId(regId);
 
     return NextResponse.json({
       success: true,

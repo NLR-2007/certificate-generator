@@ -88,7 +88,75 @@ npm run lint
 
 ---
 
-## 🗄️ Database Setup (Supabase SQL)
+## 🔥 Database & Real-Time Sync (Firebase Firestore)
+
+Data lives in **Cloud Firestore**, which is what makes the portal survive
+restarts, stay consistent across serverless instances, and push live updates to
+every open admin dashboard.
+
+The app runs **without** Firebase too - it falls back to an in-memory store so
+local development is zero-config. The admin dashboard shows which mode is active
+via a **Live sync** / **Local only** badge. In `Local only` mode data is lost on
+restart and is not shared between instances, so do not issue real certificates.
+
+### Setup (Firebase Spark / free plan is sufficient)
+
+1. Create a project at [console.firebase.google.com](https://console.firebase.google.com) - no card required.
+2. **Build > Firestore Database > Create database** (production mode).
+3. **Project settings > Service accounts > Generate new private key**. From the
+   downloaded JSON copy `project_id`, `client_email` and `private_key` into
+   `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`.
+   Keep the private key on one line, in double quotes, with its `
+` sequences intact.
+4. **Project settings > Your apps > Web app**. Copy the config into the four
+   `NEXT_PUBLIC_FIREBASE_*` variables. These are safe to expose - access is
+   controlled by security rules, not by hiding the key.
+5. Publish the rules in [`firestore.rules`](./firestore.rules) (paste into
+   **Firestore > Rules**, or `firebase deploy --only firestore:rules`).
+6. Restart the app, sign in at `/admin`, and POST once to `/api/admin/seed` to
+   copy the built-in 289-participant roster into Firestore. Seeding is
+   idempotent - existing records are skipped, never overwritten.
+
+### What syncs live
+
+Certificates (issue + revoke) and hackathon form submissions stream into the
+admin dashboard the moment they change, for every signed-in admin.
+
+### Security model
+
+The browser is trusted with nothing by default. All public traffic - certificate
+generation, public verification, the registration form - goes through Next.js API
+routes using the Admin SDK. The **only** browser-side Firestore access is the
+admin dashboard's realtime listeners, authorised by a short-lived Firebase custom
+token minted at login carrying an `admin` claim. Writes from a browser are denied
+outright.
+
+This matters because Firestore rules grant access per document, not per field:
+letting the public verify page read `certificates` directly would expose every
+`verification_token`. Keeping public reads server-side avoids that.
+
+### Cost note (Spark limits)
+
+Spark allows 50K document reads and 20K writes per day. A realtime listener is
+billed for its initial snapshot plus each changed document, so a dashboard load
+costs roughly one read per document watched. At 289 participants that is
+comfortable, but avoid adding polling on top of the listeners.
+
+Spark does **not** include Cloud Storage or Cloud Functions. Neither is used:
+PDFs are generated on demand and streamed, and all server logic runs in Next.js
+API routes. Storing generated PDFs or uploading template artwork would require
+the Blaze plan.
+
+---
+
+## 🗄️ Legacy: Supabase SQL Schema (unused)
+
+`schema.sql` targets Postgres and predates the Firestore migration. It is kept
+for reference only - no code path reads it.
+
+<details>
+<summary>Original Supabase instructions</summary>
+
 
 When deploying to production Supabase:
 1. Open your Supabase Project SQL Editor.
@@ -102,6 +170,8 @@ When deploying to production Supabase:
    ADMIN_SECRET_KEY=your-admin-passphrase
    ```
 
+</details>
+
 ---
 
 ## 🚢 Deploying to Vercel
@@ -109,7 +179,10 @@ When deploying to production Supabase:
 1. Push this repository to GitHub.
 2. Go to [Vercel Dashboard](https://vercel.com) $\rightarrow$ **Add New Project**.
 3. Select this repository.
-4. Configure Environment Variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SITE_URL`, `ADMIN_SECRET_KEY`).
+4. Configure Environment Variables: the `FIREBASE_*` and `NEXT_PUBLIC_FIREBASE_*`
+   keys, plus `NEXT_PUBLIC_SITE_URL` and `ADMIN_SECRET_KEY`. Without the Firebase
+   keys each serverless instance keeps its own in-memory copy of the data, so
+   issued certificates and registrations will appear to vanish at random.
 5. Click **Deploy**.
 
 ---
@@ -128,12 +201,13 @@ When deploying to production Supabase:
 
 ---
 
-## ⚠️ Known Limitation: In-Memory Store
+## ⚠️ Known Limitation: In-Memory Fallback
 
-Without Supabase configured, participants and issued certificates live in an
-in-memory store (`lib/db/mock-store.ts`) held on `globalThis`. This survives dev
-hot-reloads, but **not** a server restart, and it is not shared between serverless
-instances. Configure Supabase before issuing certificates you intend to keep.
+Without Firebase configured, participants, certificates and form submissions live
+in an in-memory store (`lib/db/mock-store.ts`) held on `globalThis`. It survives
+dev hot-reloads, but **not** a server restart, and it is not shared between
+serverless instances. Configure Firebase before issuing certificates you intend
+to keep. The admin dashboard shows `Local only` whenever this fallback is active.
 
 ---
 
