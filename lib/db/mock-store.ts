@@ -32,6 +32,54 @@ export interface CertificateRecord {
 
 export type Certificate = CertificateRecord;
 
+export interface FormField {
+  id: string;
+  label: string;
+  type: "text" | "number" | "email" | "tel" | "select" | "textarea";
+  required: boolean;
+  placeholder?: string;
+  options?: string[];
+}
+
+export interface FormConfig {
+  title: string;
+  description: string;
+  fields: FormField[];
+}
+
+export interface FormSubmission {
+  id: string;
+  submitted_at: string;
+  data: Record<string, string>;
+}
+
+export const DEFAULT_FORM_CONFIG: FormConfig = {
+  title: "Hackathon Registration Form",
+  description: "Fill out your details to enter upcoming Hackathons & Sprints at KLH Bachupally.",
+  fields: [
+    { id: "name", label: "Full Name (As per College Records)", type: "text", required: true, placeholder: "e.g. MARRI HRUTHIKA" },
+    { id: "registration_id", label: "Roll Number / Reg ID", type: "text", required: true, placeholder: "e.g. 2520090002" },
+    { id: "email", label: "Student Email Address", type: "email", required: true, placeholder: "e.g. student@klh.edu.in" },
+    { id: "phone", label: "WhatsApp Contact Number", type: "tel", required: true, placeholder: "e.g. +91 98765 43210" },
+    {
+      id: "department",
+      label: "Department / Campus",
+      type: "select",
+      required: true,
+      options: ["Computer Science & Engineering (CSE)", "Artificial Intelligence & Data Science (AI&DS)", "Electronics & Communication (ECE)", "Computer Science & IT (CS&IT)", "Mechanical & Robotics"]
+    },
+    { id: "team_name", label: "Hackathon Team Name", type: "text", required: true, placeholder: "e.g. Black Panthers / Innovators 2026" },
+    {
+      id: "team_role",
+      label: "Team Role",
+      type: "select",
+      required: true,
+      options: ["Team Leader", "Team Member", "Individual Participant"]
+    },
+    { id: "project_title", label: "Proposed Project Title / Idea", type: "textarea", required: false, placeholder: "Briefly describe your project idea..." },
+  ]
+};
+
 export const INITIAL_PARTICIPANTS: Participant[] = [
   { id: 'p-2520090002', registration_id: '2520090002', name: 'Marri Hruthika', email: '', department: 'CSE', college: 'Koneru Lakshmaiah Education Foundation, Bachupally', event_name: 'Smart India Hackathon 2026', team_name: 'InnoTech', eligible: true, certificate_generated: false },
   { id: 'p-2520080010', registration_id: '2520080010', name: 'K.Gayathri Srivalli', email: '', department: 'CSE', college: 'Koneru Lakshmaiah Education Foundation, Bachupally', event_name: 'Smart India Hackathon 2026', team_name: 'InnoTech', eligible: true, certificate_generated: false },
@@ -423,6 +471,33 @@ class MockDatabaseStore {
       return true;
     }
     return false;
+  }
+
+  // Form Config & Response Submission Methods
+  private formConfig: FormConfig = DEFAULT_FORM_CONFIG;
+  private formSubmissions: FormSubmission[] = [];
+
+  public getFormConfig(): FormConfig {
+    return this.formConfig;
+  }
+
+  public updateFormConfig(config: FormConfig): FormConfig {
+    this.formConfig = config;
+    return this.formConfig;
+  }
+
+  public saveFormSubmission(data: Record<string, string>): FormSubmission {
+    const sub: FormSubmission = {
+      id: `SUB-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      submitted_at: new Date().toISOString(),
+      data,
+    };
+    this.formSubmissions.unshift(sub);
+    return sub;
+  }
+
+  public getFormSubmissions(): FormSubmission[] {
+    return this.formSubmissions;
   }
 }
 

@@ -2,15 +2,16 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Users, FileCheck, Upload, Layout, ShieldAlert, Plus, Search, LogOut, CheckCircle2, Download, Eye, Sparkles } from "lucide-react";
+import { Users, FileCheck, Upload, Layout, ShieldAlert, Plus, Search, LogOut, CheckCircle2, Download, Eye, Sparkles, FileSpreadsheet, Trash2, Edit, Save, PlusCircle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
+import { FormConfig, FormField, FormSubmission } from "@/lib/db/mock-store";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"participants" | "certificates" | "templates" | "import">("participants");
+  const [activeTab, setActiveTab] = useState<"participants" | "certificates" | "form" | "templates" | "import">("participants");
   const [authed, setAuthed] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -18,6 +19,20 @@ export default function AdminDashboardPage() {
   const [certificates, setCertificates] = useState<any[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Form Builder & Submissions State
+  const [formConfig, setFormConfig] = useState<FormConfig | null>(null);
+  const [formSubmissions, setFormSubmissions] = useState<FormSubmission[]>([]);
+  const [savingForm, setSavingForm] = useState(false);
+  const [formSaveSuccess, setFormSaveSuccess] = useState(false);
+  const [formSearch, setFormSearch] = useState("");
+
+  // New Field State
+  const [newFieldLabel, setNewFieldLabel] = useState("");
+  const [newFieldType, setNewFieldType] = useState<FormField["type"]>("text");
+  const [newFieldReq, setNewFieldReq] = useState(true);
+  const [newFieldPlaceholder, setNewFieldPlaceholder] = useState("");
+  const [newFieldOptions, setNewFieldOptions] = useState("");
 
   // Admin Quick Generator State
   const [adminGenId, setAdminGenId] = useState("");
@@ -41,14 +56,13 @@ export default function AdminDashboardPage() {
     rejectedCsv?: string | null;
   } | null>(null);
 
-  // Participants and certificates are read from the server so the dashboard
-  // reflects CSV imports and previously issued certificates, not a static list.
   const loadData = useCallback(async () => {
     setLoadError(null);
     try {
-      const [participantsRes, certificatesRes] = await Promise.all([
+      const [participantsRes, certificatesRes, formRes] = await Promise.all([
         fetch("/api/admin/participants"),
         fetch("/api/admin/certificates"),
+        fetch("/api/admin/form"),
       ]);
 
       if (participantsRes.status === 401 || certificatesRes.status === 401) {
@@ -62,9 +76,15 @@ export default function AdminDashboardPage() {
 
       const participantsData = await participantsRes.json();
       const certificatesData = await certificatesRes.json();
+      const formData = await formRes.json();
 
       setParticipants(participantsData.participants || []);
       setCertificates(certificatesData.certificates || []);
+
+      if (formData.success) {
+        setFormConfig(formData.config);
+        setFormSubmissions(formData.submissions || []);
+      }
     } catch {
       setLoadError("Could not load the participant database. Please refresh and try again.");
     }
@@ -73,7 +93,6 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     let cancelled = false;
 
-    // The session cookie is httpOnly, so authentication is confirmed server-side.
     fetch("/api/admin/session")
       .then((res) => res.json())
       .then((session) => {
@@ -103,9 +122,6 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Admins issue through the admin endpoint, which accepts any registration ID -
-  // including ones not in the roster (given a name) and participants flagged
-  // ineligible. The public endpoint keeps its restrictions.
   const handleAdminGenerateCertificate = async (regIdToGen: string, nameOverride?: string) => {
     const cleanId = regIdToGen.trim();
     if (!cleanId) return;
@@ -132,13 +148,11 @@ export default function AdminDashboardPage() {
       }
 
       if (!res.ok) {
-        // The roll number is unknown - prompt for a name instead of failing.
         if (data.needsName) setNeedsName(true);
         throw new Error(data.error || "Failed to generate certificate.");
       }
 
       setNeedsName(false);
-
       const participantName = data.participantName || cleanId;
 
       setGeneratedResult({
@@ -147,12 +161,10 @@ export default function AdminDashboardPage() {
         pdfBase64: data.pdfBase64,
       });
 
-      // A brand new roll number was added to the roster - reload it.
       if (data.participantCreated) {
         loadData();
       }
 
-      // Update participant list state
       setParticipants((prev) =>
         prev.map((p) =>
           p.registration_id === cleanId
@@ -161,14 +173,14 @@ export default function AdminDashboardPage() {
         )
       );
 
-      // Add to issued certificates table
       setCertificates((prev) => [
         {
           certificate_id: data.certificateId,
           participant_name: participantName,
           registration_id: cleanId,
+          event_name: data.eventName || "Smart India Hackathon 2026",
           issue_date: new Date().toISOString(),
-          status: "VALID",
+          status: data.status || "VALID",
         },
         ...prev.filter((c) => c.certificate_id !== data.certificateId),
       ]);
@@ -187,22 +199,19 @@ export default function AdminDashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ certificateId: certId, status: newStatus }),
       });
-      if (res.ok) {
-        setCertificates((prev) =>
-          prev.map((c) => (c.certificate_id === certId ? { ...c, status: newStatus } : c))
-        );
-        return;
-      }
 
       if (res.status === 401) {
         router.push("/admin/login");
         return;
       }
 
-      const data = await res.json().catch(() => ({}));
-      alert(data.error || "Could not update the certificate status.");
-    } catch {
-      alert("Could not reach the server to update the certificate status.");
+      if (res.ok) {
+        setCertificates((prev) =>
+          prev.map((c) => (c.certificate_id === certId ? { ...c, status: newStatus } : c))
+        );
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -223,20 +232,79 @@ export default function AdminDashboardPage() {
       });
 
       const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+
       if (res.ok) {
         setImportResult(data);
-        await loadData();
-      } else if (res.status === 401) {
-        router.push("/admin/login");
+        loadData();
       } else {
         alert(data.error || "CSV Import Failed");
       }
-    } catch {
+    } catch (err) {
       alert("CSV Import Error");
     } finally {
       setImporting(false);
-      // Clear the input so re-selecting the same file fires onChange again.
-      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  // Form Builder handlers
+  const handleAddField = () => {
+    if (!newFieldLabel.trim() || !formConfig) return;
+    const fieldId = newFieldLabel.toLowerCase().replace(/[^a-z0-9]/g, "_");
+    const optionsArr = newFieldType === "select" ? newFieldOptions.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+
+    const newField: FormField = {
+      id: fieldId,
+      label: newFieldLabel.trim(),
+      type: newFieldType,
+      required: newFieldReq,
+      placeholder: newFieldPlaceholder.trim() || undefined,
+      options: optionsArr,
+    };
+
+    setFormConfig({
+      ...formConfig,
+      fields: [...formConfig.fields, newField],
+    });
+
+    setNewFieldLabel("");
+    setNewFieldPlaceholder("");
+    setNewFieldOptions("");
+  };
+
+  const handleRemoveField = (fieldId: string) => {
+    if (!formConfig) return;
+    setFormConfig({
+      ...formConfig,
+      fields: formConfig.fields.filter((f) => f.id !== fieldId),
+    });
+  };
+
+  const handleSaveFormConfig = async () => {
+    if (!formConfig) return;
+    setSavingForm(true);
+    setFormSaveSuccess(false);
+
+    try {
+      const res = await fetch("/api/admin/form", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formConfig),
+      });
+
+      if (res.ok) {
+        setFormSaveSuccess(true);
+        setTimeout(() => setFormSaveSuccess(false), 3000);
+      } else {
+        alert("Failed to save form settings.");
+      }
+    } catch {
+      alert("Save Form Error");
+    } finally {
+      setSavingForm(false);
     }
   };
 
@@ -249,20 +317,34 @@ export default function AdminDashboardPage() {
       (p.team_name && p.team_name.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  const filteredSubmissions = formSubmissions.filter((sub) => {
+    const jsonStr = JSON.stringify(sub.data).toLowerCase();
+    return jsonStr.includes(formSearch.toLowerCase());
+  });
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
       {/* TOP HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-900/10 dark:border-slate-800 pb-6">
         <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">KLH ED Cell Administration</span>
-          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white heading-font">Admin Portal</h1>
+          <span className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+            KLH ED Cell Administration
+          </span>
+          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white heading-font">
+            Admin Portal
+          </h1>
         </div>
 
         <div className="flex items-center space-x-3">
           <Badge variant="success" className="px-3 py-1 text-xs">
             Admin Authenticated
           </Badge>
-          <Button variant="outline" size="sm" onClick={handleLogout} className="text-xs text-red-600 dark:text-red-400 border-red-500/30 hover:bg-red-50 dark:hover:bg-red-950">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleLogout}
+            className="text-xs text-red-600 dark:text-red-400 border-red-500/30 hover:bg-red-50 dark:hover:bg-red-950"
+          >
             <LogOut className="w-3.5 h-3.5 mr-1.5" />
             Logout
           </Button>
@@ -270,13 +352,16 @@ export default function AdminDashboardPage() {
       </div>
 
       {loadError && (
-        <div className="bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 rounded-xl p-4 text-sm">
-          {loadError}
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-xs text-red-600 dark:text-red-400 font-semibold flex items-center justify-between">
+          <span>{loadError}</span>
+          <Button size="sm" variant="outline" onClick={loadData} className="text-[11px] py-1 px-3">
+            Retry
+          </Button>
         </div>
       )}
 
       {/* ADMIN DIRECT CERTIFICATE GENERATOR WIDGET */}
-      <Card className="border-blue-500/30 bg-white/90 dark:bg-slate-900/90 shadow-xl">
+      <Card className="border-blue-500/30 bg-white dark:bg-slate-900/90 shadow-xl">
         <CardHeader>
           <CardTitle className="text-base flex items-center">
             <Sparkles className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-2" />
@@ -290,55 +375,57 @@ export default function AdminDashboardPage() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              handleAdminGenerateCertificate(adminGenId, adminGenName);
+              handleAdminGenerateCertificate(adminGenId, needsName ? adminGenName : undefined);
             }}
-            className="space-y-3"
+            className="flex flex-col sm:flex-row gap-3"
           >
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Input
-                placeholder="Enter Registration ID / Roll Number (e.g. 2520090002)..."
-                value={adminGenId}
-                onChange={(e) => {
-                  setAdminGenId(e.target.value);
-                  setNeedsName(false);
-                  setGenerateError(null);
-                }}
-                className="flex-1"
-              />
-              <Button
-                type="submit"
-                isLoading={generatingId === adminGenId && !!adminGenId}
-                className="bg-slate-900 dark:bg-white text-white dark:text-black font-bold px-6 hover:bg-slate-800 dark:hover:bg-gray-200"
-              >
-                <FileCheck className="w-4 h-4 mr-2 text-blue-300 dark:text-blue-600" />
-                Generate Certificate
-              </Button>
-            </div>
-
             <Input
-              placeholder="Participant name (optional - overrides the name on file)"
-              value={adminGenName}
-              onChange={(e) => setAdminGenName(e.target.value)}
-              error={needsName ? "This roll number is not on file. Enter a name to issue anyway." : undefined}
-              helperText={
-                needsName
-                  ? undefined
-                  : "Leave blank to use the official name from the database. Admins may issue for any roll number, eligible or not."
-              }
+              placeholder="Enter Registration ID / Roll Number (e.g. 2520090002)..."
+              value={adminGenId}
+              onChange={(e) => {
+                setAdminGenId(e.target.value);
+                setNeedsName(false);
+                setGenerateError(null);
+              }}
+              className="flex-1"
             />
 
-            {generateError && !needsName && (
-              <p className="text-xs font-medium text-red-600 dark:text-red-400">{generateError}</p>
+            {needsName && (
+              <Input
+                placeholder="Participant Name (required for new roll number)..."
+                value={adminGenName}
+                onChange={(e) => setAdminGenName(e.target.value)}
+                className="flex-1 border-amber-500/50"
+                required
+              />
             )}
+
+            <Button
+              type="submit"
+              isLoading={generatingId === adminGenId && !!adminGenId}
+              className="bg-slate-900 dark:bg-white text-white dark:text-black font-bold px-6 hover:bg-slate-800 dark:hover:bg-gray-200"
+            >
+              <FileCheck className="w-4 h-4 mr-2 text-blue-600 dark:text-blue-400" />
+              Generate Certificate
+            </Button>
           </form>
+
+          {generateError && (
+            <p className="text-xs font-semibold text-red-600 dark:text-red-400">{generateError}</p>
+          )}
 
           {/* GENERATED CERTIFICATE PREVIEW MODAL / BANNER */}
           {generatedResult && (
-            <div className="bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-500/40 rounded-xl p-4 space-y-4">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-emerald-700 dark:text-emerald-300">
+            <div className="bg-emerald-950/60 border border-emerald-500/40 rounded-xl p-4 space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-emerald-300">
                 <div>
-                  <h4 className="font-bold text-slate-900 dark:text-white text-base">Certificate Generated for {generatedResult.participantName}</h4>
-                  <p className="text-xs text-emerald-600 dark:text-emerald-400">Certificate ID: <strong className="font-mono text-slate-900 dark:text-white">{generatedResult.certificateId}</strong></p>
+                  <h4 className="font-bold text-white text-base">
+                    Certificate Generated for {generatedResult.participantName}
+                  </h4>
+                  <p className="text-xs text-emerald-400">
+                    Certificate ID:{" "}
+                    <strong className="font-mono text-white">{generatedResult.certificateId}</strong>
+                  </p>
                 </div>
                 <a
                   href={`data:application/pdf;base64,${generatedResult.pdfBase64}`}
@@ -351,7 +438,7 @@ export default function AdminDashboardPage() {
                 </a>
               </div>
 
-              <div className="w-full h-80 border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-950">
+              <div className="w-full h-80 border border-slate-800 rounded-lg overflow-hidden bg-slate-950">
                 <iframe
                   src={`data:application/pdf;base64,${generatedResult.pdfBase64}#toolbar=0`}
                   className="w-full h-full"
@@ -365,41 +452,43 @@ export default function AdminDashboardPage() {
 
       {/* STATS CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white/70 dark:bg-slate-900/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-1 backdrop-blur-xl">
-          <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+        <div className="bg-white dark:bg-slate-900/60 p-5 rounded-2xl border border-slate-900/10 dark:border-slate-800 space-y-1 backdrop-blur-xl">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
             <span className="text-xs font-bold uppercase tracking-wider">Total Participants</span>
-            <Users className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <Users className="w-4 h-4 text-blue-500" />
           </div>
-          <p className="text-2xl font-extrabold text-slate-900 dark:text-white font-mono">{participants.length}</p>
+          <p className="text-2xl font-extrabold text-slate-900 dark:text-white font-mono">
+            {participants.length}
+          </p>
           <span className="text-[10px] text-slate-500">Official Database Records</span>
         </div>
 
-        <div className="bg-white/70 dark:bg-slate-900/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-1 backdrop-blur-xl">
-          <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
-            <span className="text-xs font-bold uppercase tracking-wider">Eligible</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+        <div className="bg-white dark:bg-slate-900/60 p-5 rounded-2xl border border-slate-900/10 dark:border-slate-800 space-y-1 backdrop-blur-xl">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
+            <span className="text-xs font-bold uppercase tracking-wider">Form Submissions</span>
+            <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
           </div>
           <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">
-            {participants.filter((p) => p.eligible).length}
+            {formSubmissions.length}
           </p>
-          <span className="text-[10px] text-slate-500">Approved for certificate</span>
+          <span className="text-[10px] text-slate-500">Hackathon Form Responses</span>
         </div>
 
-        <div className="bg-white/70 dark:bg-slate-900/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-1 backdrop-blur-xl">
-          <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+        <div className="bg-white dark:bg-slate-900/60 p-5 rounded-2xl border border-slate-900/10 dark:border-slate-800 space-y-1 backdrop-blur-xl">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
             <span className="text-xs font-bold uppercase tracking-wider">Generated</span>
-            <FileCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <FileCheck className="w-4 h-4 text-indigo-500" />
           </div>
           <p className="text-2xl font-extrabold text-indigo-600 dark:text-indigo-400 font-mono">
-            {participants.filter((p) => p.certificate_generated).length}
+            {certificates.length}
           </p>
           <span className="text-[10px] text-slate-500">Certificates issued</span>
         </div>
 
-        <div className="bg-white/70 dark:bg-slate-900/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-1 backdrop-blur-xl">
-          <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+        <div className="bg-white dark:bg-slate-900/60 p-5 rounded-2xl border border-slate-900/10 dark:border-slate-800 space-y-1 backdrop-blur-xl">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
             <span className="text-xs font-bold uppercase tracking-wider">Revoked</span>
-            <ShieldAlert className="w-4 h-4 text-red-600 dark:text-red-400" />
+            <ShieldAlert className="w-4 h-4 text-red-500" />
           </div>
           <p className="text-2xl font-extrabold text-red-600 dark:text-red-400 font-mono">
             {certificates.filter((c) => c.status === "REVOKED").length}
@@ -409,13 +498,13 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* NAVIGATION TABS */}
-      <div className="flex items-center space-x-2 border-b border-slate-200 dark:border-slate-800 overflow-x-auto pb-1">
+      <div className="flex items-center space-x-2 border-b border-slate-900/10 dark:border-slate-800 overflow-x-auto pb-1">
         <button
           onClick={() => setActiveTab("participants")}
           className={`flex items-center space-x-2 px-4 py-2.5 rounded-t-xl text-xs font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
             activeTab === "participants"
-              ? "bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white border-t border-x border-slate-300 dark:border-slate-700"
-              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900"
+              ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border-t border-x border-slate-200 dark:border-slate-700"
+              : "text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900"
           }`}
         >
           <Users className="w-4 h-4" />
@@ -423,11 +512,23 @@ export default function AdminDashboardPage() {
         </button>
 
         <button
+          onClick={() => setActiveTab("form")}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-t-xl text-xs font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
+            activeTab === "form"
+              ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border-t border-x border-slate-200 dark:border-slate-700"
+              : "text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900"
+          }`}
+        >
+          <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+          <span>Form Builder & Responses ({formSubmissions.length})</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab("certificates")}
           className={`flex items-center space-x-2 px-4 py-2.5 rounded-t-xl text-xs font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
             activeTab === "certificates"
-              ? "bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white border-t border-x border-slate-300 dark:border-slate-700"
-              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900"
+              ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border-t border-x border-slate-200 dark:border-slate-700"
+              : "text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900"
           }`}
         >
           <FileCheck className="w-4 h-4" />
@@ -435,23 +536,11 @@ export default function AdminDashboardPage() {
         </button>
 
         <button
-          onClick={() => setActiveTab("templates")}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-t-xl text-xs font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
-            activeTab === "templates"
-              ? "bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white border-t border-x border-slate-300 dark:border-slate-700"
-              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900"
-          }`}
-        >
-          <Layout className="w-4 h-4" />
-          <span>Template Coordinates</span>
-        </button>
-
-        <button
           onClick={() => setActiveTab("import")}
           className={`flex items-center space-x-2 px-4 py-2.5 rounded-t-xl text-xs font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
             activeTab === "import"
-              ? "bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white border-t border-x border-slate-300 dark:border-slate-700"
-              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900"
+              ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border-t border-x border-slate-200 dark:border-slate-700"
+              : "text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900"
           }`}
         >
           <Upload className="w-4 h-4" />
@@ -459,7 +548,7 @@ export default function AdminDashboardPage() {
         </button>
       </div>
 
-      {/* TAB 1: PARTICIPANTS WITH DIRECT ADMIN GENERATE ACTION */}
+      {/* TAB 1: PARTICIPANTS */}
       {activeTab === "participants" && (
         <Card>
           <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -479,7 +568,7 @@ export default function AdminDashboardPage() {
           <CardContent>
             <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl">
               <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
-                <thead className="bg-slate-100 dark:bg-slate-950 uppercase text-[10px] text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-800">
+                <thead className="bg-slate-100 dark:bg-slate-950 uppercase text-[10px] text-slate-500 font-bold border-b border-slate-200 dark:border-slate-800">
                   <tr>
                     <th className="px-4 py-3">Registration ID</th>
                     <th className="px-4 py-3">Participant Name</th>
@@ -488,12 +577,14 @@ export default function AdminDashboardPage() {
                     <th className="px-4 py-3 text-right">Admin Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 bg-white/60 dark:bg-slate-900/40">
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 bg-white dark:bg-slate-900/40">
                   {filteredParticipants.slice(0, 100).map((p) => (
-                    <tr key={p.registration_id} className="hover:bg-slate-100 dark:hover:bg-slate-800/40">
-                      <td className="px-4 py-3 font-mono font-bold text-blue-600 dark:text-blue-400">{p.registration_id}</td>
+                    <tr key={p.registration_id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                      <td className="px-4 py-3 font-mono font-bold text-blue-600 dark:text-blue-400">
+                        {p.registration_id}
+                      </td>
                       <td className="px-4 py-3 font-bold text-slate-900 dark:text-white">{p.name}</td>
-                      <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{p.team_name || "SIH 2026 Team"}</td>
+                      <td className="px-4 py-3 text-slate-500">{p.team_name || "SIH 2026 Team"}</td>
                       <td className="px-4 py-3">
                         <Badge variant={p.eligible ? "success" : "danger"}>
                           {p.eligible ? "Approved" : "Ineligible"}
@@ -506,7 +597,7 @@ export default function AdminDashboardPage() {
                           onClick={() => handleAdminGenerateCertificate(p.registration_id)}
                           className="text-[11px] py-1 px-3 bg-slate-900 dark:bg-white text-white dark:text-black font-bold hover:bg-slate-800 dark:hover:bg-gray-200"
                         >
-                          <FileCheck className="w-3.5 h-3.5 mr-1 text-blue-300 dark:text-blue-600" />
+                          <FileCheck className="w-3.5 h-3.5 mr-1 text-blue-500" />
                           Generate Certificate
                         </Button>
                       </td>
@@ -514,17 +605,195 @@ export default function AdminDashboardPage() {
                   ))}
                 </tbody>
               </table>
-              {filteredParticipants.length > 100 && (
-                <div className="p-3 text-center text-xs text-slate-500 border-t border-slate-200 dark:border-slate-800">
-                  Showing top 100 matching records out of {filteredParticipants.length}. Use search input to filter.
-                </div>
-              )}
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* TAB 2: CERTIFICATES & REVOCATION */}
+      {/* TAB 2: FORM BUILDER & SUBMISSIONS */}
+      {activeTab === "form" && (
+        <div className="space-y-8">
+          {/* FORM CONFIGURATION BUILDER */}
+          <Card className="border-emerald-500/20 shadow-lg">
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <CardTitle className="flex items-center text-lg">
+                  <Edit className="w-5 h-5 text-emerald-500 mr-2" />
+                  Custom Hackathon Form Builder
+                </CardTitle>
+                <CardDescription>
+                  Full administrative control over fields, options, and titles for the public registration form.
+                </CardDescription>
+              </div>
+              <Button
+                onClick={handleSaveFormConfig}
+                isLoading={savingForm}
+                variant="success"
+                className="font-bold text-xs"
+              >
+                <Save className="w-4 h-4 mr-1.5" />
+                {formSaveSuccess ? "Saved Successfully!" : "Save Form Settings"}
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {formConfig && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Form Title</label>
+                      <Input
+                        value={formConfig.title}
+                        onChange={(e) => setFormConfig({ ...formConfig, title: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Form Subtitle / Instructions</label>
+                      <Input
+                        value={formConfig.description}
+                        onChange={(e) => setFormConfig({ ...formConfig, description: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  {/* ACTIVE FIELDS LIST */}
+                  <div className="space-y-2 pt-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Active Form Fields ({formConfig.fields.length})</span>
+                    <div className="divide-y divide-slate-200 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+                      {formConfig.fields.map((f, idx) => (
+                        <div key={f.id} className="p-3 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-between gap-4 text-xs">
+                          <div className="flex items-center space-x-3">
+                            <span className="font-mono text-slate-400 font-bold">#{idx + 1}</span>
+                            <div>
+                              <p className="font-bold text-slate-900 dark:text-white">{f.label} {f.required && <span className="text-red-500">*</span>}</p>
+                              <p className="text-[11px] text-slate-500 font-mono">Type: {f.type} | ID: {f.id}</p>
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={() => handleRemoveField(f.id)}
+                            className="text-[10px] py-1 px-2"
+                          >
+                            <Trash2 className="w-3 h-3 mr-1" /> Remove
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ADD NEW FIELD FORM */}
+                  <div className="bg-slate-100 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center">
+                      <PlusCircle className="w-4 h-4 text-blue-500 mr-1.5" /> Add New Field to Registration Form
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                      <Input
+                        placeholder="Field Label (e.g. GitHub Profile URL)"
+                        value={newFieldLabel}
+                        onChange={(e) => setNewFieldLabel(e.target.value)}
+                        className="text-xs sm:col-span-2"
+                      />
+                      <select
+                        value={newFieldType}
+                        onChange={(e) => setNewFieldType(e.target.value as any)}
+                        className="flex h-10 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-black px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
+                      >
+                        <option value="text">Text Input</option>
+                        <option value="email">Email</option>
+                        <option value="tel">Phone</option>
+                        <option value="select">Dropdown Options</option>
+                        <option value="textarea">Textarea (Long Text)</option>
+                      </select>
+                      <Button onClick={handleAddField} size="sm" className="bg-blue-600 text-white font-bold text-xs">
+                        Add Field
+                      </Button>
+                    </div>
+
+                    {newFieldType === "select" && (
+                      <Input
+                        placeholder="Dropdown Options (comma separated, e.g. Option 1, Option 2)"
+                        value={newFieldOptions}
+                        onChange={(e) => setNewFieldOptions(e.target.value)}
+                        className="text-xs"
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* FORM RESPONSES & EXCEL EXPORT */}
+          <Card className="border-emerald-500/20 shadow-lg">
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <CardTitle className="flex items-center text-lg">
+                  <FileSpreadsheet className="w-5 h-5 text-emerald-500 mr-2" />
+                  Student Form Submissions ({formSubmissions.length})
+                </CardTitle>
+                <CardDescription>
+                  View live responses submitted by students and export to Excel/CSV.
+                </CardDescription>
+              </div>
+
+              <div className="flex items-center space-x-3">
+                <Input
+                  placeholder="Filter responses..."
+                  value={formSearch}
+                  onChange={(e) => setFormSearch(e.target.value)}
+                  className="w-48 text-xs"
+                />
+                <a href="/api/admin/form/export" download>
+                  <Button variant="success" size="sm" className="font-bold text-xs">
+                    <Download className="w-4 h-4 mr-1.5" />
+                    Export Responses to Excel (.csv)
+                  </Button>
+                </a>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl">
+                <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+                  <thead className="bg-slate-100 dark:bg-slate-950 uppercase text-[10px] text-slate-500 font-bold border-b border-slate-200 dark:border-slate-800">
+                    <tr>
+                      <th className="px-4 py-3">Ref ID</th>
+                      <th className="px-4 py-3">Timestamp</th>
+                      {formConfig?.fields.map((f) => (
+                        <th key={f.id} className="px-4 py-3">{f.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 bg-white dark:bg-slate-900/40">
+                    {filteredSubmissions.length === 0 ? (
+                      <tr>
+                        <td colSpan={(formConfig?.fields.length || 0) + 2} className="px-4 py-8 text-center text-slate-500">
+                          No hackathon form submissions recorded yet. Submissions from /register will appear here in real time.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredSubmissions.map((sub) => (
+                        <tr key={sub.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                          <td className="px-4 py-3 font-mono font-bold text-emerald-600 dark:text-emerald-400">{sub.id}</td>
+                          <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
+                            {new Date(sub.submitted_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                          </td>
+                          {formConfig?.fields.map((f) => (
+                            <td key={f.id} className="px-4 py-3 font-medium text-slate-900 dark:text-slate-200">
+                              {sub.data[f.id] || "—"}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* TAB 3: CERTIFICATES & REVOCATION */}
       {activeTab === "certificates" && (
         <Card>
           <CardHeader>
@@ -534,7 +803,7 @@ export default function AdminDashboardPage() {
           <CardContent>
             <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl">
               <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
-                <thead className="bg-slate-100 dark:bg-slate-950 uppercase text-[10px] text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-800">
+                <thead className="bg-slate-100 dark:bg-slate-950 uppercase text-[10px] text-slate-500 font-bold border-b border-slate-200 dark:border-slate-800">
                   <tr>
                     <th className="px-4 py-3">Certificate ID</th>
                     <th className="px-4 py-3">Participant Name</th>
@@ -543,7 +812,7 @@ export default function AdminDashboardPage() {
                     <th className="px-4 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 bg-white/60 dark:bg-slate-900/40">
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 bg-white dark:bg-slate-900/40">
                   {certificates.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
@@ -552,8 +821,10 @@ export default function AdminDashboardPage() {
                     </tr>
                   ) : (
                     certificates.map((c) => (
-                      <tr key={c.certificate_id} className="hover:bg-slate-100 dark:hover:bg-slate-800/40">
-                        <td className="px-4 py-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">{c.certificate_id}</td>
+                      <tr key={c.certificate_id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                        <td className="px-4 py-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                          {c.certificate_id}
+                        </td>
                         <td className="px-4 py-3 font-bold text-slate-900 dark:text-white">{c.participant_name}</td>
                         <td className="px-4 py-3 font-mono">{c.registration_id}</td>
                         <td className="px-4 py-3">
@@ -566,7 +837,7 @@ export default function AdminDashboardPage() {
                             href={`/verify/${c.certificate_id}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-600 dark:text-blue-400 font-semibold hover:underline mr-2"
+                            className="text-blue-500 font-semibold hover:underline mr-2"
                           >
                             Verify Page
                           </a>
@@ -589,35 +860,6 @@ export default function AdminDashboardPage() {
         </Card>
       )}
 
-      {/* TAB 3: TEMPLATES */}
-      {activeTab === "templates" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Template System & Overlay Coordinates</CardTitle>
-            <CardDescription>Adjust dynamic overlay positions for PDF rendering.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-slate-100 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3 text-xs">
-                <h4 className="font-bold text-slate-900 dark:text-white text-sm">Official Template: SIH-participation-template.pdf</h4>
-                <p className="text-slate-600 dark:text-slate-400">KLH University SIH 2026 Participation Certificate Artwork</p>
-                <Badge variant="success">Active PDF Template</Badge>
-              </div>
-
-              <div className="bg-slate-100 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3 text-xs">
-                <h4 className="font-bold text-slate-900 dark:text-white text-sm font-mono">Dynamic Elements Overlay</h4>
-                <ul className="space-y-1.5 text-slate-600 dark:text-slate-400">
-                  <li>• <strong>Participant Name:</strong> Centered at Y = 253pt (Auto-fitting font scale)</li>
-                  <li>• <strong>Certificate ID:</strong> Bottom-left margin (SIH26-XXXXXX)</li>
-                  <li>• <strong>Issue Date:</strong> Embedded timestamp</li>
-                  <li>• <strong>QR Code:</strong> 46x46pt embedded PNG</li>
-                </ul>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* TAB 4: CSV IMPORT */}
       {activeTab === "import" && (
         <Card>
@@ -626,44 +868,48 @@ export default function AdminDashboardPage() {
             <CardDescription>Upload a CSV spreadsheet with participant registration records.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-10 text-center space-y-4 bg-slate-100 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors">
-              <Upload className="w-10 h-10 text-blue-600 dark:text-blue-400 mx-auto" />
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-dashed border-slate-300 dark:border-slate-800 rounded-2xl p-10 text-center space-y-4 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors cursor-pointer"
+            >
+              <Upload className="w-10 h-10 text-blue-500 mx-auto" />
               <div className="space-y-1">
-                <p className="font-bold text-slate-800 dark:text-slate-200 text-sm">Select or drag your CSV file</p>
-                <p className="text-xs text-slate-500 font-mono">Headers: registration_id, name, email, department, college, eligible</p>
+                <p className="font-bold text-slate-900 dark:text-slate-200 text-sm">Select or drag your CSV file</p>
+                <p className="text-xs text-slate-500 font-mono">
+                  Headers: registration_id, name, email, department, college, eligible
+                </p>
               </div>
 
-              <div className="inline-block">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileUpload}
-                  disabled={importing}
-                  className="hidden"
-                />
-                <Button
-                  variant="primary"
-                  size="md"
-                  isLoading={importing}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="cursor-pointer bg-slate-900 dark:bg-white text-white dark:text-slate-950 font-bold"
-                >
-                  Browse & Upload CSV
-                </Button>
-              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={handleFileUpload}
+                disabled={importing}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                isLoading={importing}
+                className="cursor-pointer bg-slate-900 dark:bg-white text-white dark:text-slate-950 font-bold"
+              >
+                Browse & Upload CSV
+              </Button>
             </div>
 
             {importResult && (
-              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 space-y-3">
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 space-y-3">
                 <h4 className="font-bold text-slate-900 dark:text-white text-sm">CSV Import Summary</h4>
-                <div className="flex items-center space-x-4 text-xs">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
                   <Badge variant="info">Total: {importResult.totalRows}</Badge>
                   <Badge variant="success">Imported: {importResult.importedCount}</Badge>
-                  {typeof importResult.createdCount === "number" && (
-                    <Badge variant="info">
-                      New: {importResult.createdCount} / Updated: {importResult.updatedCount ?? 0}
-                    </Badge>
+                  {importResult.createdCount !== undefined && (
+                    <Badge variant="neutral">New: {importResult.createdCount}</Badge>
+                  )}
+                  {importResult.updatedCount !== undefined && (
+                    <Badge variant="neutral">Updated: {importResult.updatedCount}</Badge>
                   )}
                   <Badge variant={importResult.rejectedCount > 0 ? "danger" : "neutral"}>
                     Rejected: {importResult.rejectedCount}

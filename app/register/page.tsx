@@ -1,143 +1,95 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Sparkles, CheckCircle2, User, Mail, Phone, Building, Code2, Users, Rocket, Trophy, Calendar, MapPin, ArrowRight } from "lucide-react";
+import { Sparkles, CheckCircle2, Rocket, ArrowRight, FileText } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
-
-const HACKATHON_EVENTS = [
-  {
-    id: "sih-2026",
-    title: "Smart India Hackathon 2026",
-    subtitle: "Internal Round - KLH Bachupally",
-    dates: "March 15-16, 2026",
-    location: "Campus Auditorium, KLH Bachupally",
-    badge: "Official SIH",
-  },
-  {
-    id: "edc-innovate-2026",
-    title: "KLH ED Cell Innovation Sprint",
-    subtitle: "Startup & Product Prototype Challenge",
-    dates: "April 02-03, 2026",
-    location: "Incubation Center, KLH",
-    badge: "ED Cell",
-  },
-  {
-    id: "ai-robotics-2026",
-    title: "AI & Robotics National Hackathon",
-    subtitle: "Generative AI & Hardware Automation",
-    dates: "May 10-11, 2026",
-    location: "R&D Labs, KLH Bachupally",
-    badge: "National",
-  },
-];
+import { FormConfig, FormField } from "@/lib/db/mock-store";
 
 export default function HackathonRegisterPage() {
-  const [selectedEvent, setSelectedEvent] = useState(HACKATHON_EVENTS[0].id);
-  const [name, setName] = useState("");
-  const [rollId, setRollId] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [dept, setDept] = useState("CSE");
-  const [teamName, setTeamName] = useState("");
-  const [role, setRole] = useState("Leader");
-  const [projectTitle, setProjectTitle] = useState("");
-
+  const [formConfig, setFormConfig] = useState<FormConfig | null>(null);
+  const [formData, setFormData] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
   const [submittedPass, setSubmittedPass] = useState<any | null>(null);
   const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
+  useEffect(() => {
+    fetch("/api/register")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.config) {
+          setFormConfig(data.config);
+          // Initialize form fields state
+          const initial: Record<string, string> = {};
+          data.config.fields.forEach((f: FormField) => {
+            initial[f.id] = f.type === "select" && f.options?.[0] ? f.options[0] : "";
+          });
+          setFormData(initial);
+        }
+      })
+      .catch(() => setError("Failed to load registration form."))
+      .finally(() => setFetching(false));
+  }, []);
 
-    if (!name.trim() || !rollId.trim() || !email.trim() || !phone.trim() || !teamName.trim()) {
-      setError("Please complete all required fields.");
-      return;
-    }
-
-    setLoading(true);
-
-    setTimeout(() => {
-      const eventDetails = HACKATHON_EVENTS.find((evt) => evt.id === selectedEvent) || HACKATHON_EVENTS[0];
-      const regPassId = `KLH-REG-${Math.floor(100000 + Math.random() * 900000)}`;
-
-      setSubmittedPass({
-        passId: regPassId,
-        participantName: name.trim().toUpperCase(),
-        rollId: rollId.trim().toUpperCase(),
-        email: email.trim(),
-        phone: phone.trim(),
-        dept,
-        teamName: teamName.trim(),
-        role,
-        projectTitle: projectTitle.trim() || "GenAI & Automation Solutions",
-        eventTitle: eventDetails.title,
-        eventDates: eventDetails.dates,
-        eventLocation: eventDetails.location,
-        timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
-      });
-
-      setLoading(false);
-    }, 800);
+  const handleChange = (fieldId: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [fieldId]: value }));
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: formData }),
+      });
+
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || "Submission failed.");
+      }
+
+      setSubmittedPass({
+        submissionId: result.submissionId,
+        formData,
+        timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+      });
+    } catch (err: any) {
+      setError(err.message || "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (fetching) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-20 text-center space-y-4">
+        <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="text-slate-400 text-sm">Loading Hackathon Registration Form...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-10">
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8">
       {/* HEADER HERO */}
-      <div className="text-center space-y-4">
+      <div className="text-center space-y-3">
         <div className="inline-flex items-center space-x-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3.5 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400">
           <Sparkles className="w-3.5 h-3.5 mr-1" />
-          <span>KLH Hackathon Registration Portal 2026</span>
+          <span>KLH Hackathon Registration</span>
         </div>
         <h1 className="text-4xl font-extrabold text-slate-900 dark:text-white sm:text-5xl heading-font tracking-tight">
-          Register for KLH Hackathons
+          {formConfig?.title || "Hackathon Registration Form"}
         </h1>
-        <p className="text-lg text-gray-600 dark:text-gray-400 max-w-xl mx-auto">
-          Participate in the upcoming Smart India Hackathon internal rounds and ED Cell innovation sprints at KLH Bachupally.
+        <p className="text-base text-gray-600 dark:text-gray-400 max-w-xl mx-auto">
+          {formConfig?.description || "Fill out your details to enter upcoming Hackathons & Sprints at KLH Bachupally."}
         </p>
-      </div>
-
-      {/* EVENT SELECTOR CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {HACKATHON_EVENTS.map((evt) => {
-          const isSelected = selectedEvent === evt.id;
-          return (
-            <div
-              key={evt.id}
-              onClick={() => setSelectedEvent(evt.id)}
-              className={`cursor-pointer rounded-2xl p-5 border transition-all duration-200 space-y-3 ${
-                isSelected
-                  ? "border-blue-500 bg-blue-500/5 dark:bg-blue-500/10 shadow-lg shadow-blue-500/10"
-                  : "border-slate-900/10 dark:border-white/10 bg-slate-900/5 dark:bg-white/5 hover:border-slate-400 dark:hover:border-white/30"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <Badge variant={isSelected ? "info" : "neutral"} className="text-[10px] uppercase font-bold">
-                  {evt.badge}
-                </Badge>
-                {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
-              </div>
-              <div>
-                <h3 className="font-bold text-slate-900 dark:text-white text-base heading-font">{evt.title}</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{evt.subtitle}</p>
-              </div>
-              <div className="pt-2 text-[11px] text-gray-600 dark:text-gray-400 space-y-1 border-t border-slate-900/5 dark:border-white/5">
-                <div className="flex items-center">
-                  <Calendar className="w-3 h-3 mr-1.5 text-blue-500" />
-                  <span>{evt.dates}</span>
-                </div>
-                <div className="flex items-center">
-                  <MapPin className="w-3 h-3 mr-1.5 text-indigo-500" />
-                  <span>{evt.location}</span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
       </div>
 
       {/* REGISTRATION FORM OR SUCCESS PASS */}
@@ -147,34 +99,17 @@ export default function HackathonRegisterPage() {
           <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-6 text-center space-y-2">
             <CheckCircle2 className="w-12 h-12 text-white mx-auto" />
             <h2 className="text-2xl font-extrabold text-white heading-font">Hackathon Registration Confirmed!</h2>
-            <p className="text-emerald-100 text-xs font-mono">Registration Pass ID: {submittedPass.passId}</p>
+            <p className="text-emerald-100 text-xs font-mono">Submission Ref: {submittedPass.submissionId}</p>
           </div>
 
           <CardContent className="p-8 space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
-              <div className="space-y-1 border-b md:border-b-0 md:border-r border-slate-800 pb-4 md:pb-0 md:pr-6">
-                <span className="text-xs text-slate-400 uppercase font-bold tracking-wider">Participant Name</span>
-                <p className="font-extrabold text-lg text-white">{submittedPass.participantName}</p>
-                <p className="text-xs font-mono text-blue-400">Roll ID: {submittedPass.rollId}</p>
-              </div>
-
-              <div className="space-y-1">
-                <span className="text-xs text-slate-400 uppercase font-bold tracking-wider">Registered Event</span>
-                <p className="font-bold text-base text-white">{submittedPass.eventTitle}</p>
-                <p className="text-xs text-slate-400">{submittedPass.eventDates}</p>
-              </div>
-
-              <div className="space-y-1 border-t border-slate-800 pt-4">
-                <span className="text-xs text-slate-400 uppercase font-bold tracking-wider">Team Details</span>
-                <p className="font-bold text-white">{submittedPass.teamName} ({submittedPass.role})</p>
-                <p className="text-xs text-slate-400">Dept: {submittedPass.dept} | {submittedPass.email}</p>
-              </div>
-
-              <div className="space-y-1 border-t border-slate-800 pt-4">
-                <span className="text-xs text-slate-400 uppercase font-bold tracking-wider">Project Idea Title</span>
-                <p className="font-medium text-slate-300">{submittedPass.projectTitle}</p>
-                <p className="text-[11px] text-emerald-400 mt-1">Confirmed on {submittedPass.timestamp}</p>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              {formConfig?.fields.map((f) => (
+                <div key={f.id} className="space-y-1 border-b border-slate-800 pb-3">
+                  <span className="text-[11px] text-slate-400 uppercase font-bold tracking-wider">{f.label}</span>
+                  <p className="font-bold text-white text-sm">{submittedPass.formData[f.id] || "N/A"}</p>
+                </div>
+              ))}
             </div>
 
             <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -189,138 +124,71 @@ export default function HackathonRegisterPage() {
                 onClick={() => setSubmittedPass(null)}
                 className="w-full sm:w-auto text-xs text-slate-400 border-slate-700 hover:bg-slate-800"
               >
-                Register Another Team Member
+                Submit Another Response
               </Button>
             </div>
           </CardContent>
         </Card>
       ) : (
-        /* HACKATHON REGISTRATION FORM */
+        /* DYNAMIC HACKATHON REGISTRATION FORM */
         <Card className="border-slate-900/10 dark:border-white/10 shadow-xl">
           <CardHeader>
             <CardTitle className="text-xl flex items-center">
               <Rocket className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-2" />
-              Participant & Team Registration Form
+              Registration Details
             </CardTitle>
             <CardDescription>
-              Fill out your details to enter the selected hackathon event at KLH Bachupally.
+              Please enter accurate information. Response details will be saved directly for administrative review.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Full Name */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                    Full Name (As per College Records) *
-                  </label>
-                  <Input
-                    placeholder="e.g. MARRI HRUTHIKA"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                  />
-                </div>
+                {formConfig?.fields.map((f) => {
+                  const isFullWidth = f.type === "textarea" || f.id === "project_title" || f.id === "team_name";
+                  return (
+                    <div
+                      key={f.id}
+                      className={`space-y-1.5 ${isFullWidth ? "md:col-span-2" : ""}`}
+                    >
+                      <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        {f.label} {f.required && <span className="text-red-500">*</span>}
+                      </label>
 
-                {/* Roll Number / Reg ID */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                    Roll Number / Reg ID *
-                  </label>
-                  <Input
-                    placeholder="e.g. 2520090002"
-                    value={rollId}
-                    onChange={(e) => setRollId(e.target.value)}
-                    required
-                  />
-                </div>
-
-                {/* Email Address */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                    Student Email Address *
-                  </label>
-                  <Input
-                    type="email"
-                    placeholder="e.g. student@klh.edu.in"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                </div>
-
-                {/* Phone Number */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                    WhatsApp Contact Number *
-                  </label>
-                  <Input
-                    type="tel"
-                    placeholder="e.g. +91 98765 43210"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    required
-                  />
-                </div>
-
-                {/* Department */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                    Department / Campus
-                  </label>
-                  <select
-                    value={dept}
-                    onChange={(e) => setDept(e.target.value)}
-                    className="flex h-10 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-black px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-950 dark:focus:ring-slate-300"
-                  >
-                    <option value="CSE">Computer Science & Engineering (CSE)</option>
-                    <option value="AI&DS">Artificial Intelligence & Data Science (AI&DS)</option>
-                    <option value="ECE">Electronics & Communication (ECE)</option>
-                    <option value="CS&IT">Computer Science & IT (CS&IT)</option>
-                    <option value="MECHANICAL">Mechanical & Robotics</option>
-                  </select>
-                </div>
-
-                {/* Team Role */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                    Team Role
-                  </label>
-                  <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
-                    className="flex h-10 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-black px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-950 dark:focus:ring-slate-300"
-                  >
-                    <option value="Leader">Team Leader</option>
-                    <option value="Member">Team Member</option>
-                    <option value="Solo">Individual Participant</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Team Name */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                  Hackathon Team Name *
-                </label>
-                <Input
-                  placeholder="e.g. Black Panthers / Innovators 2026"
-                  value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
-                  required
-                />
-              </div>
-
-              {/* Project Title */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                  Proposed Project Title / Problem Statement
-                </label>
-                <Input
-                  placeholder="e.g. AI-Powered Smart Certificate Verification System"
-                  value={projectTitle}
-                  onChange={(e) => setProjectTitle(e.target.value)}
-                />
+                      {f.type === "select" ? (
+                        <select
+                          value={formData[f.id] || ""}
+                          onChange={(e) => handleChange(f.id, e.target.value)}
+                          required={f.required}
+                          className="flex h-10 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-black px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-950 dark:focus:ring-slate-300"
+                        >
+                          {f.options?.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      ) : f.type === "textarea" ? (
+                        <textarea
+                          placeholder={f.placeholder || ""}
+                          value={formData[f.id] || ""}
+                          onChange={(e) => handleChange(f.id, e.target.value)}
+                          required={f.required}
+                          rows={3}
+                          className="flex w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-black px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-950 dark:focus:ring-slate-300"
+                        />
+                      ) : (
+                        <Input
+                          type={f.type}
+                          placeholder={f.placeholder || ""}
+                          value={formData[f.id] || ""}
+                          onChange={(e) => handleChange(f.id, e.target.value)}
+                          required={f.required}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               {error && (
@@ -334,7 +202,7 @@ export default function HackathonRegisterPage() {
                 isLoading={loading}
                 className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-gray-200 font-bold py-3 text-base"
               >
-                <span>Submit Hackathon Registration</span>
+                <span>Submit Registration</span>
                 <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
             </form>
