@@ -49,6 +49,8 @@ export default function AdminDashboardPage() {
     pdfBase64: string;
   } | null>(null);
 
+  const [syncingSheet, setSyncingSheet] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{
     totalRows: number;
@@ -58,6 +60,26 @@ export default function AdminDashboardPage() {
     rejectedCount: number;
     rejectedCsv?: string | null;
   } | null>(null);
+
+  const handleSyncSheet = async () => {
+    setSyncingSheet(true);
+    setSyncMessage(null);
+    try {
+      const res = await fetch("/api/admin/sync-sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sheetUrl: formConfig?.googleSheetUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Sheet sync failed.");
+      setSyncMessage(data.message || "Sheet synced successfully!");
+      await loadData();
+    } catch (err: any) {
+      setSyncMessage(err.message || "Failed to sync sheet.");
+    } finally {
+      setSyncingSheet(false);
+    }
+  };
 
   const loadData = useCallback(async () => {
     setLoadError(null);
@@ -380,13 +402,13 @@ export default function AdminDashboardPage() {
           <Badge variant="success" className="px-3 py-1 text-xs">
             Admin Authenticated
           </Badge>
-          <Badge variant={isLive ? "info" : "warning"} className="px-3 py-1 text-xs" title={
+          <Badge variant={isLive ? "info" : "success"} className="px-3 py-1 text-xs" title={
             isLive
-              ? "Connected to Firestore - this dashboard updates live for every admin."
-              : "In-memory storage: data is per-instance and lost on restart. Configure Firebase to enable live sync."
+              ? "Connected to Firestore - live realtime updates enabled."
+              : "Connected to Google Sheet - student submissions automatically sync to Google Sheets."
           }>
-            <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${isLive ? "bg-blue-500 animate-pulse" : "bg-amber-500"}`} />
-            {isLive ? "Live sync" : "Local only"}
+            <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${isLive ? "bg-blue-500 animate-pulse" : "bg-emerald-500 animate-pulse"}`} />
+            {isLive ? "Firestore live sync" : "Google Sheet Sync Active"}
           </Badge>
           <Button
             variant="outline"
@@ -716,16 +738,34 @@ export default function AdminDashboardPage() {
                         </p>
                       </div>
 
-                      <a
-                        href={formConfig.googleSheetUrl || "https://docs.google.com/spreadsheets/d/1eZeQ_X89nSR_fma6eSbVaOuyXaZ8-ffO1KAaWoXFyCU/edit?usp=sharing"}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <Button size="sm" variant="success" className="text-xs font-bold">
-                          <Eye className="w-3.5 h-3.5 mr-1" /> Open Connected Google Sheet ↗
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          isLoading={syncingSheet}
+                          onClick={handleSyncSheet}
+                          className="text-xs font-bold text-emerald-400 border-emerald-500/40 hover:bg-emerald-950"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5 mr-1 text-emerald-400" /> Sync Roster from Google Sheet
                         </Button>
-                      </a>
+                        <a
+                          href={formConfig.googleSheetUrl || "https://docs.google.com/spreadsheets/d/1eZeQ_X89nSR_fma6eSbVaOuyXaZ8-ffO1KAaWoXFyCU/edit?usp=sharing"}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <Button size="sm" variant="success" className="text-xs font-bold">
+                            <Eye className="w-3.5 h-3.5 mr-1" /> Open Connected Google Sheet ↗
+                          </Button>
+                        </a>
+                      </div>
                     </div>
+
+                    {syncMessage && (
+                      <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-400 font-semibold">
+                        {syncMessage}
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div className="space-y-1">

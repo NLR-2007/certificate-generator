@@ -31,7 +31,7 @@ function readServiceAccount(): ServiceAccount | null {
   return {
     projectId,
     clientEmail,
-    privateKey: rawKey.replace(/\n/g, "\n"),
+    privateKey: rawKey.replace(/^"(.*)"$/, "$1").replace(/\\n/g, "\n"),
   };
 }
 

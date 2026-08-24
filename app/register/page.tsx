@@ -30,7 +30,13 @@ export default function HackathonRegisterPage() {
     }
 
     fetch("/api/register")
-      .then((res) => res.json())
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data) {
+          throw new Error((data && data.error) || "Failed to load registration form.");
+        }
+        return data;
+      })
       .then((data) => {
         if (data.success && data.config) {
           setFormConfig(data.config);
@@ -39,9 +45,11 @@ export default function HackathonRegisterPage() {
             initial[f.id] = f.type === "select" && f.options?.[0] ? f.options[0] : "";
           });
           setFormData(initial);
+        } else {
+          throw new Error(data.error || "Failed to load registration form.");
         }
       })
-      .catch(() => setError("Failed to load registration form."))
+      .catch((err) => setError(err.message || "Failed to load registration form."))
       .finally(() => setFetching(false));
   }, []);
 

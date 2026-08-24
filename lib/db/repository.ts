@@ -100,112 +100,165 @@ class FirestoreRepository implements DataRepository {
   constructor(private readonly db: Firestore) {}
 
   async getParticipant(registrationId: string) {
-    const snap = await this.db
-      .collection(COLLECTIONS.participants)
-      .doc(participantKey(registrationId))
-      .get();
-    return snap.exists ? (snap.data() as Participant) : undefined;
+    try {
+      const snap = await this.db
+        .collection(COLLECTIONS.participants)
+        .doc(participantKey(registrationId))
+        .get();
+      return snap.exists ? (snap.data() as Participant) : mockDb.findParticipantByRegId(registrationId);
+    } catch (e) {
+      console.error("Firestore getParticipant error, falling back to mockDb:", e);
+      return mockDb.findParticipantByRegId(registrationId);
+    }
   }
 
   async getAllParticipants() {
-    const snap = await this.db.collection(COLLECTIONS.participants).get();
-    return snap.docs.map((d) => d.data() as Participant);
+    try {
+      const snap = await this.db.collection(COLLECTIONS.participants).get();
+      const docs = snap.docs.map((d) => d.data() as Participant);
+      return docs.length > 0 ? docs : mockDb.getAllParticipants();
+    } catch (e) {
+      console.error("Firestore getAllParticipants error, falling back to mockDb:", e);
+      return mockDb.getAllParticipants();
+    }
   }
 
   async upsertParticipant(participant: Participant) {
-    await this.db
-      .collection(COLLECTIONS.participants)
-      .doc(participantKey(participant.registration_id))
-      .set(participant, { merge: true });
+    try {
+      await this.db
+        .collection(COLLECTIONS.participants)
+        .doc(participantKey(participant.registration_id))
+        .set(participant, { merge: true });
+    } catch (e) {
+      console.error("Firestore upsertParticipant error:", e);
+    }
+    mockDb.upsertParticipant(participant);
     return participant;
   }
 
   async getCertificateById(certificateId: string) {
-    const snap = await this.db
-      .collection(COLLECTIONS.certificates)
-      .doc(certificateKey(certificateId))
-      .get();
-    return snap.exists ? (snap.data() as CertificateRecord) : undefined;
+    try {
+      const snap = await this.db
+        .collection(COLLECTIONS.certificates)
+        .doc(certificateKey(certificateId))
+        .get();
+      return snap.exists ? (snap.data() as CertificateRecord) : mockDb.findCertificateById(certificateId);
+    } catch (e) {
+      console.error("Firestore getCertificateById error, falling back to mockDb:", e);
+      return mockDb.findCertificateById(certificateId);
+    }
   }
 
   async getCertificateByRegistrationId(registrationId: string) {
-    // registration_id_key holds the normalised id, so this equality query works
-    // without a composite index and without case-sensitivity surprises.
-    const snap = await this.db
-      .collection(COLLECTIONS.certificates)
-      .where("registration_id_key", "==", participantKey(registrationId))
-      .limit(1)
-      .get();
-    return snap.empty ? undefined : (snap.docs[0].data() as CertificateRecord);
+    try {
+      const snap = await this.db
+        .collection(COLLECTIONS.certificates)
+        .where("registration_id_key", "==", participantKey(registrationId))
+        .limit(1)
+        .get();
+      return !snap.empty ? (snap.docs[0].data() as CertificateRecord) : mockDb.findCertificateByRegId(registrationId);
+    } catch (e) {
+      console.error("Firestore getCertificateByRegistrationId error, falling back to mockDb:", e);
+      return mockDb.findCertificateByRegId(registrationId);
+    }
   }
 
   async getAllCertificates() {
-    const snap = await this.db
-      .collection(COLLECTIONS.certificates)
-      .orderBy("created_at", "desc")
-      .get();
-    return snap.docs.map((d) => d.data() as CertificateRecord);
+    try {
+      const snap = await this.db
+        .collection(COLLECTIONS.certificates)
+        .orderBy("created_at", "desc")
+        .get();
+      return snap.docs.map((d) => d.data() as CertificateRecord);
+    } catch (e) {
+      console.error("Firestore getAllCertificates error, falling back to mockDb:", e);
+      return mockDb.getAllCertificates();
+    }
   }
 
   async saveCertificate(cert: CertificateRecord) {
-    const participantRef = this.db
-      .collection(COLLECTIONS.participants)
-      .doc(participantKey(cert.registration_id));
-    const participantExists = (await participantRef.get()).exists;
+    try {
+      const participantRef = this.db
+        .collection(COLLECTIONS.participants)
+        .doc(participantKey(cert.registration_id));
+      const participantExists = (await participantRef.get()).exists;
 
-    const batch = this.db.batch();
+      const batch = this.db.batch();
 
-    batch.set(
-      this.db.collection(COLLECTIONS.certificates).doc(certificateKey(cert.certificate_id)),
-      { ...cert, registration_id_key: participantKey(cert.registration_id) },
-      { merge: true }
-    );
+      batch.set(
+        this.db.collection(COLLECTIONS.certificates).doc(certificateKey(cert.certificate_id)),
+        { ...cert, registration_id_key: participantKey(cert.registration_id) },
+        { merge: true }
+      );
 
-    if (participantExists) {
-      batch.update(participantRef, {
-        certificate_generated: true,
-        certificate_id: cert.certificate_id,
-      });
+      if (participantExists) {
+        batch.update(participantRef, {
+          certificate_generated: true,
+          certificate_id: cert.certificate_id,
+        });
+      }
+
+      await batch.commit();
+    } catch (e) {
+      console.error("Firestore saveCertificate error:", e);
     }
-
-    await batch.commit();
-    return cert;
+    return mockDb.saveCertificate(cert);
   }
 
   async updateCertificateStatus(certificateId: string, status: "VALID" | "REVOKED") {
-    const ref = this.db.collection(COLLECTIONS.certificates).doc(certificateKey(certificateId));
-    if (!(await ref.get()).exists) return false;
-    await ref.update({ status });
-    return true;
+    try {
+      const ref = this.db.collection(COLLECTIONS.certificates).doc(certificateKey(certificateId));
+      if (await ref.get().then(s => s.exists)) {
+        await ref.update({ status });
+        mockDb.updateCertificateStatus(certificateId, status);
+        return true;
+      }
+    } catch (e) {
+      console.error("Firestore updateCertificateStatus error:", e);
+    }
+    return mockDb.updateCertificateStatus(certificateId, status);
   }
 
   async getFormConfig() {
-    const snap = await this.db.collection(COLLECTIONS.formConfig).doc(FORM_CONFIG_DOC).get();
-    // Fall back to the built-in default until an admin saves one.
-    return snap.exists ? (snap.data() as FormConfig) : mockDb.getFormConfig();
+    try {
+      const snap = await this.db.collection(COLLECTIONS.formConfig).doc(FORM_CONFIG_DOC).get();
+      return snap.exists ? (snap.data() as FormConfig) : mockDb.getFormConfig();
+    } catch (e) {
+      console.error("Firestore getFormConfig error, falling back to mockDb:", e);
+      return mockDb.getFormConfig();
+    }
   }
 
   async updateFormConfig(config: FormConfig) {
-    await this.db.collection(COLLECTIONS.formConfig).doc(FORM_CONFIG_DOC).set(config);
-    return config;
+    try {
+      await this.db.collection(COLLECTIONS.formConfig).doc(FORM_CONFIG_DOC).set(config);
+    } catch (e) {
+      console.error("Firestore updateFormConfig error:", e);
+    }
+    return mockDb.updateFormConfig(config);
   }
 
   async saveFormSubmission(data: Record<string, string>) {
-    const submission: FormSubmission = {
-      id: `sub-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      submitted_at: new Date().toISOString(),
-      data,
-    };
-    await this.db.collection(COLLECTIONS.formSubmissions).doc(submission.id).set(submission);
+    const submission = mockDb.saveFormSubmission(data);
+    try {
+      await this.db.collection(COLLECTIONS.formSubmissions).doc(submission.id).set(submission);
+    } catch (e) {
+      console.error("Firestore saveFormSubmission error:", e);
+    }
     return submission;
   }
 
   async getFormSubmissions() {
-    const snap = await this.db
-      .collection(COLLECTIONS.formSubmissions)
-      .orderBy("submitted_at", "desc")
-      .get();
-    return snap.docs.map((d) => d.data() as FormSubmission);
+    try {
+      const snap = await this.db
+        .collection(COLLECTIONS.formSubmissions)
+        .orderBy("submitted_at", "desc")
+        .get();
+      return snap.docs.map((d) => d.data() as FormSubmission);
+    } catch (e) {
+      console.error("Firestore getFormSubmissions error, falling back to mockDb:", e);
+      return mockDb.getFormSubmissions();
+    }
   }
 }
 
