@@ -18,12 +18,20 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const db = getRepository();
   try {
-    const body = await req.json();
-    const data = body.data || {};
+    const body = await req.json().catch(() => ({}));
+    const rawData = body.data || {};
+    const data: Record<string, string> = {};
+    for (const key of Object.keys(rawData)) {
+      if (rawData[key] !== undefined && rawData[key] !== null) {
+        data[key] = String(rawData[key]);
+      }
+    }
 
     // Validate required fields based on active form config
-    const config = await db.getFormConfig();
-    for (const field of config.fields) {
+    const config = (await db.getFormConfig()) || DEFAULT_FORM_CONFIG;
+    const fields = Array.isArray(config.fields) ? config.fields : DEFAULT_FORM_CONFIG.fields;
+
+    for (const field of fields) {
       if (field.required && (!data[field.id] || String(data[field.id]).trim() === "")) {
         return NextResponse.json(
           { error: `Field "${field.label}" is required.` },
@@ -32,14 +40,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Save form submission in mockDb
+    // Save form submission in db
     const submission = await db.saveFormSubmission(data);
 
     // Upsert Leader into participants database
-    const regId = data["registration_id"] || data["rollId"] || data["reg_id"];
+    const regId = data["registration_id"] || data["rollId"] || data["reg_id"] || data["id"];
     const name = data["name"] || data["full_name"] || data["participant_name"];
     const teamName = data["team_name"] || "Hackathon Team";
     const dept = data["department"] || "CSE";
+    const eventTitle = config.title || "Smart India Hackathon 2026";
 
     if (regId && name) {
       await db.upsertParticipant({
@@ -50,14 +59,14 @@ export async function POST(req: NextRequest) {
         phone: data["phone"] || "",
         department: String(dept),
         college: "Koneru Lakshmaiah Education Foundation, Bachupally",
-        event_name: config.title,
+        event_name: eventTitle,
         team_name: String(teamName),
         eligible: true,
         certificate_generated: false,
       });
     }
 
-    // Upsert all additional Team Members (e.g. member_2_name, member_2_id, member_3_name, member_3_id...)
+    // Upsert all additional Team Members
     const memberCount = parseInt(data["team_member_count"] || "1", 10);
     for (let i = 2; i <= (memberCount || 10); i++) {
       const mName = data[`member_${i}_name`];
@@ -71,7 +80,7 @@ export async function POST(req: NextRequest) {
           phone: "",
           department: String(dept),
           college: "Koneru Lakshmaiah Education Foundation, Bachupally",
-          event_name: config.title,
+          event_name: eventTitle,
           team_name: String(teamName),
           eligible: true,
           certificate_generated: false,
@@ -80,7 +89,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Construct readable summary of all team members
-    const teamMembersSummary: string[] = [`Leader: ${name} (${regId})`];
+    const teamMembersSummary: string[] = [`Leader: ${name || "N/A"} (${regId || "N/A"})`];
     for (let i = 2; i <= (memberCount || 10); i++) {
       const mName = data[`member_${i}_name`];
       const mId = data[`member_${i}_id`];
@@ -89,22 +98,21 @@ export async function POST(req: NextRequest) {
       }
     }
     const teamMembersText = teamMembersSummary.join(" | ");
-
-    // Save formatted team members summary into submission data
     data["team_members_summary"] = teamMembersText;
 
     // Forward response to Google Sheets Webhook if configured
-    if (config.googleSheetWebhookUrl) {
+    const webhookUrl = config.googleSheetWebhookUrl || DEFAULT_FORM_CONFIG.googleSheetWebhookUrl;
+    if (webhookUrl) {
       try {
-        fetch(config.googleSheetWebhookUrl, {
+        fetch(webhookUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             submissionId: submission.id,
             submittedAt: submission.submitted_at,
             formData: data,
-            name,
-            registration_id: regId,
+            name: name || "",
+            registration_id: regId || "",
             email: data["email"] || "",
             phone: data["phone"] || "",
             department: dept,
@@ -125,7 +133,8 @@ export async function POST(req: NextRequest) {
       submissionId: submission.id,
       message: "Registration submitted successfully!",
     });
-  } catch (error) {
-    return NextResponse.json({ error: "Server error during registration." }, { status: 500 });
+  } catch (error: any) {
+    console.error("Error in POST /api/register:", error);
+    return NextResponse.json({ error: error.message || "Server error during registration." }, { status: 500 });
   }
 }

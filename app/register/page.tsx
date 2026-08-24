@@ -71,9 +71,9 @@ export default function HackathonRegisterPage() {
         body: JSON.stringify({ data: formData }),
       });
 
-      const result = await res.json();
-      if (!res.ok) {
-        throw new Error(result.error || "Submission failed.");
+      const result = await res.json().catch(() => null);
+      if (!res.ok || !result) {
+        throw new Error((result && result.error) || "Submission failed. Please check required fields and try again.");
       }
 
       const passObj = {
