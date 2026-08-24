@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { PDFDocument, StandardFonts } from "pdf-lib";
-import { generateCertificateId } from "../lib/certificate/generator";
+import { generateCertificateId, generateCertificatePDF } from "../lib/certificate/generator";
 import { calculateFontSizeForName, getCenteredX } from "../lib/certificate/fonts";
 import { sanitizeForPdfText } from "../lib/certificate/text";
 import { parseAndValidateCSV } from "../lib/admin/csv";
@@ -105,5 +105,52 @@ describe("CSV participant import parsing", () => {
 
     expect(result.validRows[0].eligible).toBe(true);
     expect(result.validRows[0].event_name).toBe("Smart India Hackathon 2026");
+  });
+});
+
+describe("Certificate PDF pipeline", () => {
+  test("renders a valid PDF from the official template", async () => {
+    const pdf = await generateCertificatePDF({
+      participantName: "Marri Hruthika",
+      registrationId: "2520090002",
+      certificateId: "SIH26-TEST22",
+      baseUrl: "https://example.test",
+    });
+
+    expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(pdf.length).toBeGreaterThan(10000);
+  });
+
+  test("prints the participant name in capitals", async () => {
+    // Content streams are compressed, so instead of grepping the bytes: if the
+    // name is uppercased before drawing, differently-cased input must render to
+    // byte-identical PDFs. Every other input is held constant.
+    const render = (participantName: string) =>
+      generateCertificatePDF({
+        participantName,
+        registrationId: "2520090002",
+        certificateId: "SIH26-TEST23",
+        issueDate: "01/01/2026",
+        baseUrl: "https://example.test",
+      });
+
+    const [lower, mixed, upper] = await Promise.all([
+      render("marri hruthika"),
+      render("Marri Hruthika"),
+      render("MARRI HRUTHIKA"),
+    ]);
+
+    expect(lower.equals(upper)).toBe(true);
+    expect(mixed.equals(upper)).toBe(true);
+  });
+
+  test("rejects a name the certificate font cannot render", async () => {
+    await expect(
+      generateCertificatePDF({
+        participantName: String.fromCodePoint(0x092a, 0x094d, 0x0930),
+        registrationId: "X",
+        certificateId: "SIH26-TEST24",
+      })
+    ).rejects.toThrow(/cannot render/i);
   });
 });

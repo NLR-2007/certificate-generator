@@ -70,12 +70,17 @@ export async function generateCertificatePDF(options: GenerateOptions): Promise<
     throw new UnrenderableNameError([]);
   }
 
-  const fontSize = calculateFontSizeForName(safeName, fontBold, maxWidth, maxFontSize, 18);
-  const textWidth = fontBold.widthOfTextAtSize(safeName, fontSize);
+  // Names are printed in capitals on the official certificate. Uppercasing before
+  // measuring matters: capitals are wider, so the fit must be computed on the
+  // string that actually gets drawn.
+  const displayName = safeName.toUpperCase();
+
+  const fontSize = calculateFontSizeForName(displayName, fontBold, maxWidth, maxFontSize, 18);
+  const textWidth = fontBold.widthOfTextAtSize(displayName, fontSize);
   const nameX = getCenteredX(width / 2, textWidth, 24);
 
   // Draw Centered Participant Name in Deep Slate Navy
-  page.drawText(safeName, {
+  page.drawText(displayName, {
     x: nameX,
     y: nameY,
     size: fontSize,

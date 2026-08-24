@@ -14,13 +14,13 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = "primary", size = "md", isLoading, children, disabled, type = "button", ...props }, ref) => {
-    const baseStyles = "inline-flex items-center justify-center font-semibold rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:opacity-50 disabled:pointer-events-none active:scale-[0.98]";
+    const baseStyles = "inline-flex items-center justify-center font-semibold rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-950 disabled:opacity-50 disabled:pointer-events-none active:scale-[0.98]";
     
     const variants = {
-      primary: "bg-white text-slate-950 hover:bg-slate-200 font-bold shadow-lg shadow-white/10 focus:ring-white",
-      secondary: "bg-slate-900 text-slate-100 hover:bg-slate-800 border border-slate-800 focus:ring-slate-700",
-      outline: "border border-slate-800 bg-slate-950/60 text-slate-200 hover:bg-slate-900 hover:text-white focus:ring-slate-700",
-      ghost: "hover:bg-slate-900 text-slate-300 hover:text-white focus:ring-slate-700",
+      primary: "bg-slate-900 dark:bg-white text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-slate-200 font-bold shadow-lg shadow-slate-900/10 dark:shadow-white/10 focus:ring-slate-900 dark:focus:ring-white",
+      secondary: "bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 focus:ring-slate-400 dark:focus:ring-slate-700",
+      outline: "border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/60 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900 hover:text-slate-900 dark:hover:text-white focus:ring-slate-400 dark:focus:ring-slate-700",
+      ghost: "hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white focus:ring-slate-400 dark:focus:ring-slate-700",
       danger: "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-600/20 focus:ring-red-500",
       success: "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 focus:ring-emerald-500",
     };

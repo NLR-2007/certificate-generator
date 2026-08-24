@@ -116,10 +116,10 @@ function GenerateContent() {
         <Badge variant="info" className="px-3 py-1 text-xs">
           Smart India Hackathon 2026
         </Badge>
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-white heading-font tracking-tight">
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white heading-font tracking-tight">
           Generate Your Certificate
         </h1>
-        <p className="text-slate-400 text-sm max-w-lg mx-auto">
+        <p className="text-slate-600 dark:text-slate-400 text-sm max-w-lg mx-auto">
           Enter your official Roll Number or Registration ID to verify your record and generate your official PDF certificate.
         </p>
       </div>
@@ -128,7 +128,7 @@ function GenerateContent() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center">
-            <Search className="w-4 h-4 text-blue-400 mr-2" />
+            <Search className="w-4 h-4 text-blue-600 dark:text-blue-400 mr-2" />
             Participant Verification Lookup
           </CardTitle>
           <CardDescription>
@@ -163,26 +163,26 @@ function GenerateContent() {
 
       {/* ERROR MSG */}
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-4 flex items-start space-x-3 text-sm animate-fadeIn">
-          <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+        <div className="bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 rounded-xl p-4 flex items-start space-x-3 text-sm animate-fadeIn">
+          <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
           <div className="space-y-1">
             <p className="font-semibold">Verification Error</p>
-            <p className="text-xs text-red-300 leading-relaxed">{error}</p>
+            <p className="text-xs text-red-700 dark:text-red-300 leading-relaxed">{error}</p>
           </div>
         </div>
       )}
 
       {/* PARTICIPANT DETAILS CARD */}
       {participant && (
-        <Card className="border-blue-500/30 bg-slate-900/80 space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-slate-800 gap-2">
+        <Card className="border-blue-500/30 bg-white/80 dark:bg-slate-900/80 space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800 gap-2">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-full bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center font-bold text-lg">
+              <div className="w-10 h-10 rounded-full bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 flex items-center justify-center font-bold text-lg">
                 <UserCheck className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-[10px] font-semibold text-blue-400 uppercase tracking-wider block">Official Record Verified</span>
-                <h3 className="text-xl font-bold text-white heading-font">{participant.name}</h3>
+                <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">Official Record Verified</span>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white heading-font">{participant.name}</h3>
               </div>
             </div>
 
@@ -192,51 +192,51 @@ function GenerateContent() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-xs">
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+            <div className="bg-slate-100 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
               <span className="text-slate-500 font-medium uppercase tracking-wider block text-[10px]">Registration ID</span>
-              <span className="text-white font-mono font-bold text-sm">{participant.registration_id}</span>
+              <span className="text-slate-900 dark:text-white font-mono font-bold text-sm">{participant.registration_id}</span>
             </div>
 
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+            <div className="bg-slate-100 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
               <span className="text-slate-500 font-medium uppercase tracking-wider block text-[10px]">Event</span>
-              <span className="text-slate-200 font-semibold">{participant.event_name}</span>
+              <span className="text-slate-800 dark:text-slate-200 font-semibold">{participant.event_name}</span>
             </div>
 
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+            <div className="bg-slate-100 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
               <span className="text-slate-500 font-medium uppercase tracking-wider block text-[10px]">Department / College</span>
-              <span className="text-slate-200 font-semibold">{participant.department || "CSE"} ({participant.college || "KLH University"})</span>
+              <span className="text-slate-800 dark:text-slate-200 font-semibold">{participant.department || "CSE"} ({participant.college || "KLH University"})</span>
             </div>
           </div>
 
           {/* GENERATION AREA */}
           <div className="pt-2">
             {!generatedCert ? (
-              <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="bg-slate-100 dark:bg-slate-950 p-5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="space-y-1 text-center sm:text-left">
-                  <p className="font-bold text-white text-sm">Ready to Generate Official PDF</p>
-                  <p className="text-xs text-slate-400">Your certificate will embed a cryptographic QR code and issue date.</p>
+                  <p className="font-bold text-slate-900 dark:text-white text-sm">Ready to Generate Official PDF</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">Your certificate will embed a cryptographic QR code and issue date.</p>
                 </div>
                 <Button
                   onClick={handleGenerateCertificate}
                   isLoading={generating}
                   disabled={!participant.eligible}
-                  className="bg-white text-slate-950 hover:bg-slate-200 font-bold w-full sm:w-auto px-6"
+                  className="bg-slate-900 dark:bg-white text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-slate-200 font-bold w-full sm:w-auto px-6"
                 >
-                  <FileCheck className="w-4 h-4 mr-2 text-blue-600" />
+                  <FileCheck className="w-4 h-4 mr-2 text-blue-300 dark:text-blue-600" />
                   Generate Certificate Now
                 </Button>
               </div>
             ) : (
-              <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-6 space-y-6">
-                <div className="flex items-center space-x-3 text-emerald-400">
-                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+              <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-6 space-y-6">
+                <div className="flex items-center space-x-3 text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
                   <div>
-                    <h4 className="font-bold text-base text-white">
+                    <h4 className="font-bold text-base text-slate-900 dark:text-white">
                       {generatedCert.pdf_base64
                         ? "Certificate Generated Successfully!"
                         : "Certificate Already Issued"}
                     </h4>
-                    <p className="text-xs text-emerald-300">Certificate ID: <strong className="font-mono">{generatedCert.certificate_id}</strong></p>
+                    <p className="text-xs text-emerald-700 dark:text-emerald-300">Certificate ID: <strong className="font-mono">{generatedCert.certificate_id}</strong></p>
                   </div>
                 </div>
 
@@ -271,8 +271,8 @@ function GenerateContent() {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    <Button variant="outline" className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-950">
-                      <ShieldCheck className="w-4 h-4 mr-2 text-emerald-400" />
+                    <Button variant="outline" className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950">
+                      <ShieldCheck className="w-4 h-4 mr-2 text-emerald-600 dark:text-emerald-400" />
                       View Public Verification Page
                     </Button>
                   </a>
@@ -281,10 +281,10 @@ function GenerateContent() {
                 {/* IN-BROWSER PDF PREVIEW EMBED */}
                 {generatedCert.pdf_base64 && (
                   <div className="space-y-2 pt-2">
-                    <p className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center">
-                      <Eye className="w-4 h-4 mr-1 text-slate-400" /> Live Certificate PDF Preview
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center">
+                      <Eye className="w-4 h-4 mr-1 text-slate-600 dark:text-slate-400" /> Live Certificate PDF Preview
                     </p>
-                    <div className="w-full h-[500px] border border-slate-800 rounded-xl overflow-hidden shadow-2xl bg-slate-950">
+                    <div className="w-full h-[500px] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-2xl bg-slate-100 dark:bg-slate-950">
                       <iframe
                         src={`data:application/pdf;base64,${generatedCert.pdf_base64}#toolbar=0&navpanes=0`}
                         className="w-full h-full"
@@ -304,7 +304,7 @@ function GenerateContent() {
 
 export default function GeneratePage() {
   return (
-    <Suspense fallback={<div className="text-center py-20 text-slate-400">Loading certificate generator...</div>}>
+    <Suspense fallback={<div className="text-center py-20 text-slate-600 dark:text-slate-400">Loading certificate generator...</div>}>
       <GenerateContent />
     </Suspense>
   );

@@ -46,7 +46,7 @@ export default function CertificateVerificationPage() {
     return (
       <div className="max-w-xl mx-auto px-4 py-20 text-center space-y-4">
         <div className="w-12 h-12 rounded-full border-4 border-emerald-500 border-t-transparent animate-spin mx-auto" />
-        <p className="text-sm font-semibold text-slate-400">Verifying certificate authenticity...</p>
+        <p className="text-sm font-semibold text-slate-600 dark:text-slate-400">Verifying certificate authenticity...</p>
       </div>
     );
   }
@@ -54,18 +54,18 @@ export default function CertificateVerificationPage() {
   if (!data || !data.found || !data.certificate) {
     return (
       <div className="max-w-lg mx-auto px-4 py-16 text-center space-y-6">
-        <div className="w-16 h-16 rounded-2xl bg-red-500/10 text-red-400 flex items-center justify-center mx-auto border border-red-500/20 shadow-lg">
+        <div className="w-16 h-16 rounded-2xl bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto border border-red-500/20 shadow-lg">
           <ShieldAlert className="w-9 h-9" />
         </div>
         <div className="space-y-2">
           <Badge variant="danger" className="px-3 py-1 text-xs">
             Verification Failed
           </Badge>
-          <h1 className="text-3xl font-extrabold text-white heading-font">
+          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white heading-font">
             Certificate Not Found
           </h1>
-          <p className="text-slate-400 text-sm">
-            No active certificate record was found matching ID: <strong className="font-mono text-slate-200">{certificateId}</strong>.
+          <p className="text-slate-600 dark:text-slate-400 text-sm">
+            No active certificate record was found matching ID: <strong className="font-mono text-slate-800 dark:text-slate-200">{certificateId}</strong>.
           </p>
         </div>
 
@@ -86,7 +86,7 @@ export default function CertificateVerificationPage() {
     <div className="max-w-2xl mx-auto px-4 py-12 space-y-8">
       {/* STATUS BADGE BANNER */}
       <div className={`p-6 rounded-2xl border text-center space-y-3 backdrop-blur-xl ${
-        isValid ? "bg-emerald-950/40 border-emerald-500/30" : "bg-red-950/40 border-red-500/30"
+        isValid ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500/30" : "bg-red-50 dark:bg-red-950/40 border-red-500/30"
       }`}>
         <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto shadow-xl ${
           isValid ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
@@ -96,12 +96,12 @@ export default function CertificateVerificationPage() {
 
         <div className="space-y-1">
           <h1 className={`text-2xl font-extrabold heading-font ${
-            isValid ? "text-emerald-300" : "text-red-300"
+            isValid ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"
           }`}>
             {isValid ? "Certificate Verified ✓" : "Certificate Revoked ✕"}
           </h1>
           <p className={`text-xs font-semibold uppercase tracking-wider ${
-            isValid ? "text-emerald-400" : "text-red-400"
+            isValid ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
           }`}>
             Official Record Status: {cert.status}
           </p>
@@ -109,43 +109,43 @@ export default function CertificateVerificationPage() {
       </div>
 
       {/* CERTIFICATE DETAILS CARD */}
-      <div className="bg-slate-900/60 rounded-2xl border border-slate-800 shadow-2xl p-6 sm:p-8 space-y-6 backdrop-blur-xl">
-        <div className="border-b border-slate-800 pb-4 flex items-center justify-between">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+      <div className="bg-white/70 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 sm:p-8 space-y-6 backdrop-blur-xl">
+        <div className="border-b border-slate-200 dark:border-slate-800 pb-4 flex items-center justify-between">
+          <span className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
             Certificate Attributes
           </span>
-          <span className="font-mono text-xs font-bold bg-slate-950 text-blue-400 px-3 py-1 rounded-md border border-slate-800">
+          <span className="font-mono text-xs font-bold bg-slate-100 dark:bg-slate-950 text-blue-600 dark:text-blue-400 px-3 py-1 rounded-md border border-slate-200 dark:border-slate-800">
             ID: {cert.certificate_id}
           </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <div className="space-y-1">
-            <span className="text-xs text-slate-400 font-semibold flex items-center">
+            <span className="text-xs text-slate-600 dark:text-slate-400 font-semibold flex items-center">
               <User className="w-3.5 h-3.5 mr-1 text-slate-500" /> Participant Name
             </span>
-            <p className="text-lg font-bold text-white heading-font">{cert.participant_name}</p>
+            <p className="text-lg font-bold text-slate-900 dark:text-white heading-font">{cert.participant_name}</p>
           </div>
 
           <div className="space-y-1">
-            <span className="text-xs text-slate-400 font-semibold flex items-center">
+            <span className="text-xs text-slate-600 dark:text-slate-400 font-semibold flex items-center">
               <Hash className="w-3.5 h-3.5 mr-1 text-slate-500" /> Registration ID
             </span>
-            <p className="text-base font-mono font-bold text-slate-200">{cert.registration_id}</p>
+            <p className="text-base font-mono font-bold text-slate-800 dark:text-slate-200">{cert.registration_id}</p>
           </div>
 
           <div className="space-y-1">
-            <span className="text-xs text-slate-400 font-semibold flex items-center">
+            <span className="text-xs text-slate-600 dark:text-slate-400 font-semibold flex items-center">
               <Award className="w-3.5 h-3.5 mr-1 text-slate-500" /> Event Name
             </span>
-            <p className="text-sm font-semibold text-slate-200">{cert.event_name}</p>
+            <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{cert.event_name}</p>
           </div>
 
           <div className="space-y-1">
-            <span className="text-xs text-slate-400 font-semibold flex items-center">
+            <span className="text-xs text-slate-600 dark:text-slate-400 font-semibold flex items-center">
               <Calendar className="w-3.5 h-3.5 mr-1 text-slate-500" /> Date Issued
             </span>
-            <p className="text-sm font-semibold text-slate-200">
+            <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
               {new Date(cert.issue_date).toLocaleDateString("en-GB", {
                 day: "numeric",
                 month: "long",
@@ -155,17 +155,17 @@ export default function CertificateVerificationPage() {
           </div>
         </div>
 
-        <div className="pt-4 border-t border-slate-800 text-xs text-slate-400 flex items-center justify-between">
+        <div className="pt-4 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 flex items-center justify-between">
           <span className="flex items-center">
             <Building className="w-3.5 h-3.5 mr-1 text-slate-500" /> KLH University ED Cell & IIC
           </span>
-          <span className="text-emerald-400 font-semibold">Cryptographically Verified</span>
+          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Cryptographically Verified</span>
         </div>
       </div>
 
       <div className="text-center pt-2">
         <Link href="/verify">
-          <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
+          <Button variant="ghost" size="sm" className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Verify Another Certificate
           </Button>

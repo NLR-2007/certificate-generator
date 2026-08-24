@@ -46,13 +46,13 @@ export default function AdminLoginPage() {
   return (
     <div className="max-w-md mx-auto px-4 py-20 space-y-6">
       <div className="text-center space-y-3">
-        <div className="w-12 h-12 rounded-2xl bg-blue-600/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mx-auto shadow-lg">
+        <div className="w-12 h-12 rounded-2xl bg-blue-600/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto shadow-lg">
           <Lock className="w-6 h-6" />
         </div>
-        <h1 className="text-2xl font-extrabold text-white heading-font">
+        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white heading-font">
           Administrator Portal Login
         </h1>
-        <p className="text-slate-400 text-xs">
+        <p className="text-slate-600 dark:text-slate-400 text-xs">
           Authorized ED Cell admins only. Manage participants, templates & certificates.
         </p>
       </div>
@@ -60,7 +60,7 @@ export default function AdminLoginPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center">
-            <Key className="w-4 h-4 text-blue-400 mr-2" />
+            <Key className="w-4 h-4 text-blue-600 dark:text-blue-400 mr-2" />
             Enter Admin Secret Key
           </CardTitle>
           <CardDescription>
@@ -77,7 +77,7 @@ export default function AdminLoginPage() {
               error={error}
             />
 
-            <Button type="submit" isLoading={loading} className="w-full bg-white text-slate-950 hover:bg-slate-200 font-bold py-2.5">
+            <Button type="submit" isLoading={loading} className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-slate-200 font-bold py-2.5">
               <span>Authenticate & Enter</span>
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
