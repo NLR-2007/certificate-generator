@@ -74,7 +74,7 @@ export const Footer: React.FC = () => {
         {/* Bottom Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-t border-slate-900/10 dark:border-white/10 py-6 px-8 gap-2 text-xs text-gray-500">
           <p>© {new Date().getFullYear()} KLH University ED Cell. All rights reserved.</p>
-          <p>Powered by Next.js & Magic UI Design</p>
+          <p>Developed by <span className="font-semibold text-slate-900 dark:text-white">Black Panthers</span></p>
         </div>
       </div>
     </footer>
