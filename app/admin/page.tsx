@@ -168,7 +168,22 @@ export default function AdminDashboardPage() {
     eventOverride?: string
   ) => {
     const cleanId = regIdToGen.trim();
-    if (!cleanId) return;
+
+    // Silently doing nothing here reads as a broken button. The registration id
+    // is not optional: the certificate id, and so the QR code, are derived from it.
+    if (!cleanId) {
+      setGeneratedResult(null);
+      setGenerateError(
+        "Enter a registration ID / roll number. The certificate ID and its QR code are built from it, so a certificate cannot be issued without one."
+      );
+      return;
+    }
+
+    if (manualDetails && !nameOverride?.trim() && !participants.some((p) => p.registration_id === cleanId)) {
+      setGeneratedResult(null);
+      setGenerateError("Enter the name to print, or untick the manual details box.");
+      return;
+    }
 
     setGeneratingId(cleanId);
     setGeneratedResult(null);
@@ -452,26 +467,24 @@ export default function AdminDashboardPage() {
             }}
             className="space-y-3"
           >
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="space-y-1">
+              <label
+                htmlFor="admin-gen-id"
+                className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+              >
+                Registration ID / Roll Number (required)
+              </label>
               <Input
-                aria-label="Registration ID or roll number"
-                placeholder="Registration ID / Roll Number (e.g. 2520090002)..."
+                id="admin-gen-id"
+                placeholder="e.g. 2520090002"
                 value={adminGenId}
                 onChange={(e) => {
                   setAdminGenId(e.target.value);
                   setNeedsName(false);
                   setGenerateError(null);
                 }}
-                className="flex-1"
+                required
               />
-              <Button
-                type="submit"
-                isLoading={generatingId === adminGenId && !!adminGenId}
-                className="bg-slate-900 dark:bg-white text-white dark:text-black font-bold px-6 hover:bg-slate-800 dark:hover:bg-gray-200"
-              >
-                <FileCheck className="w-4 h-4 mr-2 text-blue-600 dark:text-blue-400" />
-                Generate Certificate
-              </Button>
             </div>
 
             <label className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer w-fit">
@@ -519,10 +532,25 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
             )}
+
+            <Button
+              type="submit"
+              isLoading={generatingId === adminGenId && !!adminGenId}
+              className="w-full sm:w-auto bg-slate-900 dark:bg-white text-white dark:text-black font-bold px-6 hover:bg-slate-800 dark:hover:bg-gray-200"
+            >
+              <FileCheck className="w-4 h-4 mr-2 text-blue-600 dark:text-blue-400" />
+              Generate Certificate
+            </Button>
           </form>
 
           {generateError && (
-            <p className="text-xs font-semibold text-red-600 dark:text-red-400">{generateError}</p>
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-xs font-semibold text-red-600 dark:text-red-400"
+            >
+              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+              <span className="leading-relaxed">{generateError}</span>
+            </div>
           )}
 
           {/* GENERATED CERTIFICATE PREVIEW MODAL / BANNER */}
