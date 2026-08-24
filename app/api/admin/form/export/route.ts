@@ -5,8 +5,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRepository } from "@/lib/db/repository";
 
 export async function GET(req: NextRequest) {
-  const db = getRepository();
   try {
+    const db = getRepository();
     const config = await db.getFormConfig();
     const submissions = await db.getFormSubmissions();
 

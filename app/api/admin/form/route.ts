@@ -6,8 +6,8 @@ import { FormConfig } from "@/lib/db/mock-store";
 import { getRepository } from "@/lib/db/repository";
 
 export async function GET(req: NextRequest) {
-  const db = getRepository();
   try {
+    const db = getRepository();
     const config = await db.getFormConfig();
     const submissions = await db.getFormSubmissions();
     return NextResponse.json({ success: true, config, submissions });
@@ -17,8 +17,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const db = getRepository();
   try {
+    const db = getRepository();
     const body = await req.json();
     if (!body.title || !Array.isArray(body.fields)) {
       return NextResponse.json({ error: "Invalid form configuration format." }, { status: 400 });

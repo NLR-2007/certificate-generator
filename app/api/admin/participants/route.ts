@@ -6,10 +6,15 @@ import { requireAdmin } from "@/lib/admin/guard";
 import { getRepository } from "@/lib/db/repository";
 
 export async function GET(req: NextRequest) {
-  const db = getRepository();
   const denied = await requireAdmin(req);
   if (denied) return denied;
 
-  // Live view of the store, so CSV imports and issued certificates are reflected.
-  return NextResponse.json({ participants: await db.getAllParticipants() });
+  try {
+    const db = getRepository();
+    // Live view of the store, so CSV imports and issued certificates are reflected.
+    return NextResponse.json({ participants: await db.getAllParticipants() });
+  } catch (error) {
+    console.error("Admin participants listing failed:", error);
+    return NextResponse.json({ error: "Could not load participants." }, { status: 500 });
+  }
 }

@@ -6,9 +6,14 @@ import { requireAdmin } from "@/lib/admin/guard";
 import { getRepository } from "@/lib/db/repository";
 
 export async function GET(req: NextRequest) {
-  const db = getRepository();
   const denied = await requireAdmin(req);
   if (denied) return denied;
 
-  return NextResponse.json({ certificates: await db.getAllCertificates() });
+  try {
+    const db = getRepository();
+    return NextResponse.json({ certificates: await db.getAllCertificates() });
+  } catch (error) {
+    console.error("Admin certificates listing failed:", error);
+    return NextResponse.json({ error: "Could not load certificates." }, { status: 500 });
+  }
 }

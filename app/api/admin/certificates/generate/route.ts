@@ -1,11 +1,14 @@
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
-import { randomBytes } from "crypto";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/admin/guard";
 import { Certificate, Participant } from "@/lib/db/mock-store";
-import { generateCertificatePDF, generateCertificateId, getBaseUrl } from "@/lib/certificate/generator";
+import { generateCertificatePDF, getBaseUrl } from "@/lib/certificate/generator";
+import { certificateIdFor, certificateIssueDate } from "@/lib/certificate/signing";
 import { UnrenderableNameError } from "@/lib/certificate/text";
-import { DataRepository, getRepository } from "@/lib/db/repository";
+import { getRepository } from "@/lib/db/repository";
 
 const DEFAULT_EVENT = "Smart India Hackathon 2026";
 
@@ -29,8 +32,8 @@ const AdminGenerateSchema = z.object({
  * The public route keeps its restrictions; this endpoint is gated by requireAdmin.
  */
 export async function POST(req: NextRequest) {
-  const db = getRepository();
   try {
+    const db = getRepository();
     const denied = await requireAdmin(req);
     if (denied) return denied;
 
@@ -84,10 +87,10 @@ export async function POST(req: NextRequest) {
 
     const existingCert = await db.getCertificateByRegistrationId(registrationId);
 
-    // Re-issuing keeps the same public certificate ID, so a participant never
-    // ends up with two valid certificates and existing QR codes keep resolving.
-    const certificateId = existingCert?.certificate_id ?? (await uniqueCertificateId(db));
-    const issueDate = existingCert?.issue_date ?? now;
+    // The id is derived from the registration id, so re-issuing always lands on
+    // the same public certificate id and existing QR codes keep resolving.
+    const certificateId = certificateIdFor(registrationId);
+    const issueDate = existingCert?.issue_date ?? certificateIssueDate().toISOString();
 
     const pdfBuffer = await generateCertificatePDF({
       participantName: name,
@@ -105,7 +108,6 @@ export async function POST(req: NextRequest) {
       registration_id: registrationId,
       event_name: event,
       issue_date: issueDate,
-      verification_token: existingCert?.verification_token ?? `vt_${randomBytes(24).toString("hex")}`,
       // Re-issuing does not silently un-revoke a certificate.
       status: existingCert?.status ?? "VALID",
       created_at: existingCert?.created_at ?? now,
@@ -138,12 +140,4 @@ export async function POST(req: NextRequest) {
     console.error("Admin Certificate Generation Error:", error);
     return NextResponse.json({ error: "Could not generate the certificate." }, { status: 500 });
   }
-}
-
-async function uniqueCertificateId(db: DataRepository): Promise<string> {
-  let id = generateCertificateId("SIH26");
-  for (let attempt = 0; attempt < 5 && (await db.getCertificateById(id)); attempt++) {
-    id = generateCertificateId("SIH26");
-  }
-  return id;
 }

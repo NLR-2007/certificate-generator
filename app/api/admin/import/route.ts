@@ -1,3 +1,6 @@
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
 import { parseAndValidateCSV, generateRejectedRowsCSV } from "@/lib/admin/csv";
 import { requireAdmin } from "@/lib/admin/guard";
@@ -7,8 +10,8 @@ import { getRepository } from "@/lib/db/repository";
 const MAX_CSV_BYTES = 5 * 1024 * 1024; // 5 MB
 
 export async function POST(req: NextRequest) {
-  const db = getRepository();
   try {
+    const db = getRepository();
     const denied = await requireAdmin(req);
     if (denied) return denied;
 

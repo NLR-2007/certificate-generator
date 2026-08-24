@@ -1,5 +1,4 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
-import { randomInt } from "crypto";
 import fs from "fs";
 import path from "path";
 import { calculateFontSizeForName, getCenteredX } from "./fonts";
@@ -146,16 +145,3 @@ export async function generateCertificatePDF(options: GenerateOptions): Promise<
   return Buffer.from(pdfBytes);
 }
 
-/**
- * Generates a cryptographically secure random certificate ID (e.g., SIH26-8F3K92).
- * Certificate IDs are public identifiers, so they must not be guessable from
- * Math.random()'s predictable PRNG state.
- */
-export function generateCertificateId(prefix: string = "SIH26"): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Removed ambiguous O, 0, I, 1
-  let randomPart = "";
-  for (let i = 0; i < 6; i++) {
-    randomPart += chars[randomInt(chars.length)];
-  }
-  return `${prefix}-${randomPart}`;
-}

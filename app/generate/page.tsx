@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { fetchJson } from "@/lib/utils/api";
 
 function GenerateContent() {
   const searchParams = useSearchParams();
@@ -51,12 +52,9 @@ function GenerateContent() {
     setGeneratedCert(null);
 
     try {
-      const res = await fetch(`/api/participant/verify?registrationId=${encodeURIComponent(cleanId)}`);
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "We couldn't find an eligible participant with this registration ID.");
-      }
+      const data = await fetchJson<any>(
+        `/api/participant/verify?registrationId=${encodeURIComponent(cleanId)}`
+      );
 
       setParticipant(data.participant);
       if (data.existingCertificate) {
@@ -82,17 +80,11 @@ function GenerateContent() {
     setError(null);
 
     try {
-      const res = await fetch("/api/certificate/generate", {
+      const data = await fetchJson<any>("/api/certificate/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ registrationId: participant.registration_id }),
       });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Could not generate certificate right now.");
-      }
 
       setGeneratedCert({
         certificate_id: data.certificateId,

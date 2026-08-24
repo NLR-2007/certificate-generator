@@ -2,7 +2,7 @@
 
 Official, production-ready **Certificate Generator and Verification Platform** built for **Internal Smart India Hackathon 2026** organized by ED Cell & IIC, Koneru Lakshmaiah Education Foundation (KLH University Bachupally).
 
-Designed specifically for **Vercel Serverless Deployment** with **Next.js 14 App Router**, **TypeScript**, **Tailwind CSS**, **pdf-lib**, **qrcode**, and **Supabase**.
+Designed specifically for **Vercel Serverless Deployment** with **Next.js 14 App Router**, **TypeScript**, **Tailwind CSS**, **pdf-lib**, **qrcode**, and a Google Sheet as the participant database.
 
 ---
 
@@ -15,15 +15,15 @@ Designed specifically for **Vercel Serverless Deployment** with **Next.js 14 App
 3. **Dynamic Font Scale & Dynamic Centering**:
    - Fits short names ("Akhil Reddy") and very long names ("Venkata Sai Sri Lakshmi Narasimha Reddy") perfectly on the certificate line without overflowing.
 4. **Cryptographic QR Code Verification**:
-   - Embeds a high-density QR code on every generated PDF pointing to `https://domain.com/verify/SIH26-XXXXXX`.
+   - Embeds a high-density QR code on every generated PDF pointing to `https://domain.com/verify/SIH26-2520030366-K7M2QXB4`.
 5. **In-Browser PDF Preview & Download**:
    - Preview generated certificates dynamically in browser iframe without requiring immediate download.
 6. **Public Verification Portal**:
    - `/verify/[certificateId]` displays green `Certificate Verified ✓` or red `Certificate Revoked ✕` with participant metadata.
 7. **Admin Suite & CSV Importer**:
    - Manage eligible participants, toggle certificate revocation, drag-and-drop CSV upload with rejected row diagnostic export.
-8. **Zero-Config Development Mock Mode**:
-   - Operates out-of-the-box in local dev mode using an in-memory/JSON store if Supabase keys are not yet configured.
+8. **No Database To Run**:
+   - Participants live in a Google Sheet read as CSV; certificate IDs are HMAC-signed so verification needs no stored record. Falls back to a bundled roster if the sheet is unreachable.
 
 ---
 
@@ -35,8 +35,8 @@ Browser Client
 Next.js App Router (React Server & Client Components + Tailwind CSS)
    ↓ (Vercel Serverless Functions)
 Certificate Engine (pdf-lib + qrcode + Dynamic Font Scale)
-   ↓ (Supabase JS Client with RLS)
-Supabase DB (PostgreSQL) + Supabase Storage
+   ↓ (HMAC-signed certificate IDs - no record to store)
+Google Sheet, read as CSV (the participant database)
 ```
 
 ---
@@ -84,93 +84,98 @@ npm run lint
 - **Admin Portal**: `/admin/login`, using whatever value you set for `ADMIN_SECRET_KEY`.
   The passphrase is verified on the server and exchanged for a signed, httpOnly
   session cookie — it is never embedded in the client bundle.
-- **Seeded Department Roll Numbers**: 289 official student registration IDs across **AI&DS**, **CS&IT**, **ECE**, and **CSE** departments (e.g. `2520080006`, `2520090002`, `2520040001`, `2520030015`).
+- **Bundled Roll Numbers**: with no roster sheet configured, the app serves 289
+  official student registration IDs across **AI&DS**, **CS&IT**, **ECE** and
+  **CSE** (e.g. `2520080006`, `2520090002`, `2520040001`, `2520030015`), so
+  `/generate` works the moment you clone the repo.
 
 ---
 
-## 🔥 Database & Real-Time Sync (Firebase Firestore)
+## 📊 The Database Is a Google Sheet
 
-Data lives in **Cloud Firestore**, which is what makes the portal survive
-restarts, stay consistent across serverless instances, and push live updates to
-every open admin dashboard.
+There is no database server, no Firebase, no Supabase. Two things replace one:
 
-The app runs **without** Firebase too - it falls back to an in-memory store so
-local development is zero-config. The admin dashboard shows which mode is active
-via a **Live sync** / **Local only** badge. In `Local only` mode data is lost on
-restart and is not shared between instances, so do not issue real certificates.
+**Participants come from a Google Sheet.** The app reads the sheet's CSV export
+directly on every lookup (cached for 60 seconds), so editing a row in the sheet
+is live within a minute. Nothing to sync, nothing to import, nothing to keep in
+step.
 
-### Setup (Firebase Spark / free plan is sufficient)
+**Certificates verify themselves.** A certificate ID is an HMAC of the
+registration ID under a server-only secret:
 
-1. Create a project at [console.firebase.google.com](https://console.firebase.google.com) - no card required.
-2. **Build > Firestore Database > Create database** (production mode).
-3. **Project settings > Service accounts > Generate new private key**. From the
-   downloaded JSON copy `project_id`, `client_email` and `private_key` into
-   `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`.
-   Keep the private key on one line, in double quotes, with its `
-` sequences intact.
-4. **Project settings > Your apps > Web app**. Copy the config into the four
-   `NEXT_PUBLIC_FIREBASE_*` variables. These are safe to expose - access is
-   controlled by security rules, not by hiding the key.
-5. Publish the rules in [`firestore.rules`](./firestore.rules) (paste into
-   **Firestore > Rules**, or `firebase deploy --only firestore:rules`).
-6. Restart the app, sign in at `/admin`, and POST once to `/api/admin/seed` to
-   copy the built-in 289-participant roster into Firestore. Seeding is
-   idempotent - existing records are skipped, never overwritten.
+```text
+SIH26-2520030366-K7M2QXB4
+\___/ \________/ \______/
+event    reg id   signature
+```
 
-### What syncs live
+`/verify/[id]` recomputes the signature and then confirms the person is on the
+roster sheet. Forging an ID means forging the HMAC, which needs the secret — and
+the secret never leaves the server. Because the ID is derived from the
+registration ID rather than randomly drawn, the same participant always resolves
+to the same certificate, which is what prevents a second one being issued.
 
-Certificates (issue + revoke) and hackathon form submissions stream into the
-admin dashboard the moment they change, for every signed-in admin.
+### Setting up the sheet
 
-### Security model
+1. Create (or open) the roster Google Sheet.
+2. **Share → General access → Anyone with the link → Viewer.** The app reads it
+   anonymously; without this it cannot see the sheet at all.
+3. Put its URL in `PARTICIPANTS_SHEET_URL`.
 
-The browser is trusted with nothing by default. All public traffic - certificate
-generation, public verification, the registration form - goes through Next.js API
-routes using the Admin SDK. The **only** browser-side Firestore access is the
-admin dashboard's realtime listeners, authorised by a short-lived Firebase custom
-token minted at login carrying an `admin` claim. Writes from a browser are denied
-outright.
+### Recognised columns
 
-This matters because Firestore rules grant access per document, not per field:
-letting the public verify page read `certificates` directly would expose every
-`verification_token`. Keeping public reads server-side avoids that.
+Headers are matched case- and punctuation-insensitively, so `Registration ID`,
+`registration_id` and `registration id` are all the same column.
 
-### Cost note (Spark limits)
+| Purpose | Accepted headers | Required |
+| --- | --- | --- |
+| Roll number | `Registration ID`, `Roll Number`, `Leader Roll ID`, `Roll ID`, `Reg ID`, `ID` | ✅ |
+| Name | `Name`, `Full Name`, `Leader Name`, `Participant Name` | ✅ |
+| Contact | `Email`, `Phone` | — |
+| Detail | `Department`, `Team Name`, `Event Name` | — |
+| Eligibility | `Eligible` — `TRUE`/`FALSE` | — |
+| Revocation | `Revoked` — `TRUE` fails public verification | — |
+| Team members | `All Team Member Names & IDs`, or `Member 2 Name` + `Member 2 Roll ID` … up to `Member 10` | — |
 
-Spark allows 50K document reads and 20K writes per day. A realtime listener is
-billed for its initial snapshot plus each changed document, so a dashboard load
-costs roughly one read per document watched. At 289 participants that is
-comfortable, but avoid adding polling on top of the listeners.
+Omit the `Eligible` column entirely and everyone on the sheet is treated as
+eligible — a roster sheet lists the people who took part.
 
-Spark does **not** include Cloud Storage or Cloud Functions. Neither is used:
-PDFs are generated on demand and streamed, and all server logic runs in Next.js
-API routes. Storing generated PDFs or uploading template artwork would require
-the Blaze plan.
+Team members can be listed in one cell in whatever shape students typed them:
 
----
+```text
+Marri Hruthika - 2520090002, K Gayathri - 2520080010
+Marri Hruthika (2520090002)
+Marri Hruthika, 2520090002, K Gayathri, 2520080010
+2520090002 Marri Hruthika
+```
 
-## 🗄️ Legacy: Supabase SQL Schema (unused)
+Every member becomes an individually verifiable participant, because
+certificates are issued per person, not per team.
 
-`schema.sql` targets Postgres and predates the Firestore migration. It is kept
-for reference only - no code path reads it.
+### Revoking a certificate
 
-<details>
-<summary>Original Supabase instructions</summary>
+Set that participant's `Revoked` column to `TRUE` in the sheet. The admin
+dashboard's revoke button re-reads the sheet and reports whether the change has
+landed — it cannot write to the sheet, because Google's CSV export is read-only.
 
+### The signing secret
 
-When deploying to production Supabase:
-1. Open your Supabase Project SQL Editor.
-2. Run the contents of [`schema.sql`](file:///d:/SIH-Certificate/schema.sql).
-3. Set your environment variables in `.env.local` or Vercel Settings:
-   ```env
-   NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-   NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
-   ADMIN_SECRET_KEY=your-admin-passphrase
-   ```
+`CERTIFICATE_SIGNING_SECRET` is what makes certificate IDs unforgeable. Generate
+one with `openssl rand -hex 32`, set it in Vercel, and **never change it**: every
+certificate already issued verifies against that exact value, so changing it
+invalidates all of them at once.
 
-</details>
+If it is unset the app still works and stays self-consistent, but falls back to a
+secret committed to this repository — meaning anyone who reads the source can
+mint a valid-looking certificate ID. Set it before issuing certificates that
+matter.
+
+### When the sheet cannot be read
+
+If the sheet is unshared, unreachable, or empty, lookups fall back to the
+289-participant roster bundled in `lib/db/mock-store.ts` and a warning is logged.
+The site keeps working rather than going down — but it is serving stale data, so
+check the sharing setting if names look out of date.
 
 ---
 
@@ -179,11 +184,17 @@ When deploying to production Supabase:
 1. Push this repository to GitHub.
 2. Go to [Vercel Dashboard](https://vercel.com) $\rightarrow$ **Add New Project**.
 3. Select this repository.
-4. Configure Environment Variables: the `FIREBASE_*` and `NEXT_PUBLIC_FIREBASE_*`
-   keys, plus `NEXT_PUBLIC_SITE_URL` and `ADMIN_SECRET_KEY`. Without the Firebase
-   keys each serverless instance keeps its own in-memory copy of the data, so
-   issued certificates and registrations will appear to vanish at random.
-5. Click **Deploy**.
+4. Configure Environment Variables:
+
+   | Variable | Why it matters |
+   | --- | --- |
+   | `PARTICIPANTS_SHEET_URL` | The roster sheet. Without it the app serves the bundled roster instead. |
+   | `CERTIFICATE_SIGNING_SECRET` | Makes certificate IDs unforgeable. Set it once and never change it. |
+   | `NEXT_PUBLIC_SITE_URL` | The public origin baked into every QR code. Must be the real domain. |
+   | `ADMIN_SECRET_KEY` | The admin passphrase. `/admin` is unusable while unset. |
+   | `CERTIFICATE_ISSUE_DATE` | Optional. Fixes the date printed on every certificate. |
+
+5. Click **Deploy**. There is no database to provision and nothing to seed.
 
 ---
 
@@ -195,19 +206,29 @@ When deploying to production Supabase:
   session cookie. Every `/api/admin/*` route verifies that cookie independently,
   and `middleware.ts` redirects unauthenticated visitors away from `/admin`.
 - **Data Protection**: Public verification route `/verify/[certificateId]` never exposes private emails, phone numbers, verification tokens, or database IDs.
-- **Unguessable Identifiers**: Certificate IDs and verification tokens are drawn
-  from `crypto` (not `Math.random`), so a public ID cannot be predicted from another.
+- **Unforgeable Identifiers**: A certificate ID carries an HMAC-SHA256 signature
+  over its registration ID, compared in constant time. Editing either half of an
+  ID breaks the signature, and producing a valid one requires
+  `CERTIFICATE_SIGNING_SECRET`, which never leaves the server.
+- **No Trust In The Browser**: The name printed on a certificate always comes
+  from the roster sheet, never from the request. A visitor supplies only a
+  registration ID.
 - **Server-Side Rendering**: Certificate generation occurs entirely in serverless route handlers, and the participant database is never shipped to the browser.
 
 ---
 
-## ⚠️ Known Limitation: In-Memory Fallback
+## ⚠️ Known Limitations
 
-Without Firebase configured, participants, certificates and form submissions live
-in an in-memory store (`lib/db/mock-store.ts`) held on `globalThis`. It survives
-dev hot-reloads, but **not** a server restart, and it is not shared between
-serverless instances. Configure Firebase before issuing certificates you intend
-to keep. The admin dashboard shows `Local only` whenever this fallback is active.
+- **Sheet reads are cached for 60 seconds.** An edit in the sheet takes up to a
+  minute to appear. The admin dashboard's **Re-read Roster Sheet** button clears
+  the cache immediately.
+- **The app cannot write to the sheet.** Google's CSV export is read-only, so
+  admin edits to a participant (and certificate revocation) are changes you make
+  in the sheet itself. The admin UI reads back and confirms them.
+- **Form-builder configuration is not persisted.** Edits to the registration form
+  layout live in memory and reset when the serverless instance recycles.
+  Submitted registrations are unaffected — those go straight to the Apps Script
+  webhook and land in the sheet.
 
 ---
 

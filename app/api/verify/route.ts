@@ -1,9 +1,12 @@
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
 import { getRepository } from "@/lib/db/repository";
 
 export async function GET(req: NextRequest) {
-  const db = getRepository();
   try {
+    const db = getRepository();
     const { searchParams } = new URL(req.url);
     const certIdParam = searchParams.get("certificateId");
 

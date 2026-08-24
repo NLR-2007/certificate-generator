@@ -1,27 +1,49 @@
 import { describe, expect, test } from "vitest";
 import { PDFDocument, StandardFonts } from "pdf-lib";
-import { generateCertificateId, generateCertificatePDF } from "../lib/certificate/generator";
+import { generateCertificatePDF } from "../lib/certificate/generator";
+import {
+  certificateIdFor,
+  isAuthenticCertificateId,
+  parseCertificateId,
+} from "../lib/certificate/signing";
+import { mapRowsToParticipants } from "../lib/sheet/participants";
+import { parseCombinedMembers } from "../lib/sheet/members";
 import { calculateFontSizeForName, getCenteredX } from "../lib/certificate/fonts";
 import { sanitizeForPdfText } from "../lib/certificate/text";
 import { parseAndValidateCSV } from "../lib/admin/csv";
 
 describe("Certificate System Core Unit Tests", () => {
-  test("generateCertificateId creates unique ID with prefix", () => {
-    const certId1 = generateCertificateId("SIH26");
-    const certId2 = generateCertificateId("SIH26");
+  test("certificateIdFor is deterministic and shaped as expected", () => {
+    const first = certificateIdFor("2520030366");
+    const second = certificateIdFor(" 2520030366 ");
 
-    expect(certId1).toMatch(/^SIH26-[A-Z0-9]{6}$/);
-    expect(certId2).toMatch(/^SIH26-[A-Z0-9]{6}$/);
-    expect(certId1).not.toEqual(certId2);
+    expect(first).toMatch(/^SIH26-[A-Z0-9]+-[0-9A-Z]{8}$/);
+    // The same participant must always resolve to the same certificate: this is
+    // what prevents a second certificate being issued on a repeat request.
+    expect(second).toBe(first);
   });
 
-  test("generateCertificateId omits visually ambiguous characters", () => {
-    const ids = Array.from({ length: 200 }, () => generateCertificateId("SIH26"));
-    for (const id of ids) {
-      expect(id.slice(6)).not.toMatch(/[O0I1]/);
-    }
-    // Cryptographic randomness should not repeat across a small sample.
-    expect(new Set(ids).size).toBe(ids.length);
+  test("different participants get different certificate IDs", () => {
+    const ids = new Set(
+      ["2520030366", "2520090002", "2520080010", "2520030151"].map((r) => certificateIdFor(r))
+    );
+    expect(ids.size).toBe(4);
+  });
+
+  test("a genuine certificate ID verifies and a tampered one does not", () => {
+    const id = certificateIdFor("2520030366");
+    expect(isAuthenticCertificateId(id)).toBe(true);
+
+    const parsed = parseCertificateId(id)!;
+    expect(parsed.registrationId).toBe("2520030366");
+
+    // Swapping in someone else"+String.fromCharCode(39)+"s registration id invalidates the signature.
+    expect(isAuthenticCertificateId(`SIH26-2520090002-${parsed.signature}`)).toBe(false);
+    // So does editing the signature itself.
+    expect(isAuthenticCertificateId(`SIH26-2520030366-AAAAAAAA`)).toBe(false);
+    // And so does a malformed id.
+    expect(isAuthenticCertificateId("SIH26-2520030366")).toBe(false);
+    expect(isAuthenticCertificateId("not-a-certificate")).toBe(false);
   });
 
   test("calculateFontSizeForName tier scaling logic", () => {
@@ -152,5 +174,136 @@ describe("Certificate PDF pipeline", () => {
         certificateId: "SIH26-TEST24",
       })
     ).rejects.toThrow(/cannot render/i);
+  });
+});
+
+describe("Google Sheet roster mapping", () => {
+  const defaults = { eventName: "Smart India Hackathon 2026" };
+
+  test("maps a team row into the leader and every listed member", () => {
+    const participants = mapRowsToParticipants(
+      [
+        {
+          "Leader Roll ID": "2520030366",
+          "Leader Name": "Lokesh Reddy",
+          "Team Name": "InnoTech",
+          "Member 2 Roll ID": "2520090002",
+          "Member 2 Name": "Marri Hruthika",
+          "Member 3 Roll ID": "2520080010",
+          "Member 3 Name": "K. Gayathri",
+        },
+      ],
+      defaults
+    );
+
+    expect(participants.map((p) => p.registration_id)).toEqual([
+      "2520030366",
+      "2520090002",
+      "2520080010",
+    ]);
+    expect(participants.every((p) => p.team_name === "InnoTech")).toBe(true);
+    expect(participants.every((p) => p.eligible)).toBe(true);
+  });
+
+  test("reads headers case- and punctuation-insensitively", () => {
+    const [participant] = mapRowsToParticipants(
+      [{ "registration id": "2520030366", "full  name": "Lokesh Reddy" }],
+      defaults
+    );
+
+    expect(participant.registration_id).toBe("2520030366");
+    expect(participant.name).toBe("Lokesh Reddy");
+  });
+
+  test("honours the eligible and revoked columns", () => {
+    const [ineligible] = mapRowsToParticipants(
+      [{ "Registration ID": "2520030001", Name: "A Person", Eligible: "FALSE" }],
+      defaults
+    );
+    expect(ineligible.eligible).toBe(false);
+
+    const [revoked] = mapRowsToParticipants(
+      [{ "Registration ID": "2520030002", Name: "B Person", Revoked: "TRUE" }],
+      defaults
+    );
+    expect(revoked.eligible).toBe(true);
+    expect(revoked.revoked).toBe(true);
+  });
+
+  test("skips rows with no registration ID and de-duplicates repeats", () => {
+    const participants = mapRowsToParticipants(
+      [
+        { Name: "Nameless Row" },
+        { "Registration ID": "2520030366", Name: "Lokesh Reddy" },
+        { "Registration ID": "2520030366", Name: "Lokesh Reddy (resubmitted)" },
+      ],
+      defaults
+    );
+
+    expect(participants).toHaveLength(1);
+    // A later row wins, so a corrected resubmission takes effect.
+    expect(participants[0].name).toBe("Lokesh Reddy (resubmitted)");
+  });
+});
+
+describe("Combined team-member cell parsing", () => {
+  test("reads dash-separated name and ID pairs", () => {
+    expect(
+      parseCombinedMembers("Marri Hruthika - 2520090002, K Gayathri - 2520080010")
+    ).toEqual([
+      { name: "Marri Hruthika", registrationId: "2520090002" },
+      { name: "K Gayathri", registrationId: "2520080010" },
+    ]);
+  });
+
+  test("reads bracketed IDs and newline-separated entries", () => {
+    expect(parseCombinedMembers("Marri Hruthika (2520090002)\nK Gayathri (2520080010)")).toEqual([
+      { name: "Marri Hruthika", registrationId: "2520090002" },
+      { name: "K Gayathri", registrationId: "2520080010" },
+    ]);
+  });
+
+  test("pairs a name with the ID that follows it on the next entry", () => {
+    expect(
+      parseCombinedMembers("Marri Hruthika, 2520090002, K Gayathri, 2520080010")
+    ).toEqual([
+      { name: "Marri Hruthika", registrationId: "2520090002" },
+      { name: "K Gayathri", registrationId: "2520080010" },
+    ]);
+  });
+
+  test("reads entries written ID first", () => {
+    expect(parseCombinedMembers("2520090002 Marri Hruthika")).toEqual([
+      { name: "Marri Hruthika", registrationId: "2520090002" },
+    ]);
+  });
+
+  test("drops IDs with no name, and de-duplicates", () => {
+    expect(parseCombinedMembers("2520090002")).toEqual([]);
+    expect(parseCombinedMembers("")).toEqual([]);
+    expect(
+      parseCombinedMembers("Marri Hruthika - 2520090002; Marri Hruthika - 2520090002")
+    ).toHaveLength(1);
+  });
+
+  test("team rows using the combined column produce one participant each", () => {
+    const participants = mapRowsToParticipants(
+      [
+        {
+          "Leader Name": "Lokesh Reddy",
+          "Leader Roll ID": "2520030366",
+          "Team Name": "InnoTech",
+          "All Team Member Names & IDs": "Marri Hruthika - 2520090002, K Gayathri - 2520080010",
+        },
+      ],
+      { eventName: "Smart India Hackathon 2026" }
+    );
+
+    expect(participants.map((p) => p.registration_id).sort()).toEqual([
+      "2520030366",
+      "2520080010",
+      "2520090002",
+    ]);
+    expect(participants.every((p) => p.team_name === "InnoTech")).toBe(true);
   });
 });

@@ -1,3 +1,6 @@
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getBaseUrl } from "@/lib/certificate/generator";
@@ -8,8 +11,8 @@ const QuerySchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
-  const db = getRepository();
   try {
+    const db = getRepository();
     const { searchParams } = new URL(req.url);
     const regIdParam = searchParams.get("registrationId");
 

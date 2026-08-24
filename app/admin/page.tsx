@@ -6,9 +6,9 @@ import { Users, FileCheck, Upload, Layout, ShieldAlert, Plus, Search, LogOut, Ch
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
+import { fetchJson } from "@/lib/utils/api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
-import { useRealtimeCollection } from "@/lib/hooks/useRealtimeCollection";
-import { FormConfig, FormField, FormSubmission } from "@/lib/db/mock-store";
+import { CertificateRecord, FormConfig, FormField, FormSubmission } from "@/lib/db/mock-store";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -19,8 +19,6 @@ export default function AdminDashboardPage() {
   const [participants, setParticipants] = useState<any[]>([]);
   const [certificates, setCertificates] = useState<any[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [firebaseToken, setFirebaseToken] = useState<string | null>(null);
-  const [backend, setBackend] = useState<"firestore" | "memory">("memory");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form Builder & Submissions State
@@ -65,13 +63,11 @@ export default function AdminDashboardPage() {
     setSyncingSheet(true);
     setSyncMessage(null);
     try {
-      const res = await fetch("/api/admin/sync-sheet", {
+      const data = await fetchJson<any>("/api/admin/sync-sheet", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sheetUrl: formConfig?.googleSheetUrl }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Sheet sync failed.");
       setSyncMessage(data.message || "Sheet synced successfully!");
       await loadData();
     } catch (err: any) {
@@ -126,8 +122,6 @@ export default function AdminDashboardPage() {
           router.push("/admin/login");
           return;
         }
-        setBackend(session.backend === "firestore" ? "firestore" : "memory");
-        setFirebaseToken(session.firebaseToken ?? null);
         setAuthed(true);
         loadData();
       })
@@ -223,27 +217,27 @@ export default function AdminDashboardPage() {
     }
   };
 
+  // Certificate status lives in the roster sheet, not in this app. This asks the
+  // server to re-read the sheet and reports whether the change has landed yet.
   const handleToggleRevoke = async (certId: string, currentStatus: string) => {
     const newStatus = currentStatus === "VALID" ? "REVOKED" : "VALID";
     try {
-      const res = await fetch("/api/admin/certificates/revoke", {
+      const data = await fetchJson<any>("/api/admin/certificates/revoke", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ certificateId: certId, status: newStatus }),
       });
 
-      if (res.status === 401) {
+      setCertificates((prev) =>
+        prev.map((c) => (c.certificate_id === certId ? { ...c, status: data.status } : c))
+      );
+      setSyncMessage(data.message);
+    } catch (err: any) {
+      if (err?.status === 401) {
         router.push("/admin/login");
         return;
       }
-
-      if (res.ok) {
-        setCertificates((prev) =>
-          prev.map((c) => (c.certificate_id === certId ? { ...c, status: newStatus } : c))
-        );
-      }
-    } catch (e) {
-      console.error(e);
+      setSyncMessage(err?.message || "Could not check that certificate.");
     }
   };
 
@@ -340,21 +334,9 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Live Firestore views. Each returns null when realtime is unavailable, in
-  // which case the fetched state above remains the source of truth.
-  const liveCertificates = useRealtimeCollection<any>(
-    backend === "firestore" ? "certificates" : null,
-    firebaseToken
-  );
-  const liveSubmissions = useRealtimeCollection<any>(
-    backend === "firestore" ? "formSubmissions" : null,
-    firebaseToken
-  );
-
   if (!authed) return null;
 
-  const certificatesView = liveCertificates ?? certificates;
-  const isLive = liveCertificates !== null;
+  const certificatesView: CertificateRecord[] = certificates;
 
   const filteredParticipants = participants.filter(
     (p) =>
@@ -363,7 +345,7 @@ export default function AdminDashboardPage() {
       (p.team_name && p.team_name.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const submissionsView: FormSubmission[] = liveSubmissions ?? formSubmissions;
+  const submissionsView: FormSubmission[] = formSubmissions;
 
   const filteredSubmissions = submissionsView.filter((sub) => {
     const jsonStr = JSON.stringify(sub.data).toLowerCase();
@@ -402,13 +384,13 @@ export default function AdminDashboardPage() {
           <Badge variant="success" className="px-3 py-1 text-xs">
             Admin Authenticated
           </Badge>
-          <Badge variant={isLive ? "info" : "success"} className="px-3 py-1 text-xs" title={
-            isLive
-              ? "Connected to Firestore - live realtime updates enabled."
-              : "Connected to Google Sheet - student submissions automatically sync to Google Sheets."
-          }>
-            <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${isLive ? "bg-blue-500 animate-pulse" : "bg-emerald-500 animate-pulse"}`} />
-            {isLive ? "Firestore live sync" : "Google Sheet Sync Active"}
+          <Badge
+            variant="success"
+            className="px-3 py-1 text-xs"
+            title="The roster Google Sheet is the source of truth. Refresh to pull the latest rows."
+          >
+            <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-emerald-500 animate-pulse" />
+            Google Sheet connected
           </Badge>
           <Button
             variant="outline"
@@ -734,7 +716,7 @@ export default function AdminDashboardPage() {
                           <FileSpreadsheet className="w-4 h-4 mr-1.5 text-emerald-400" /> Connected Google Sheet
                         </h4>
                         <p className="text-xs text-slate-400">
-                          Incoming student registration responses will sync with your Google Sheet.
+                          This sheet is the participant database. Edit a row there and refresh to see it here.
                         </p>
                       </div>
 
@@ -747,7 +729,7 @@ export default function AdminDashboardPage() {
                           onClick={handleSyncSheet}
                           className="text-xs font-bold text-emerald-400 border-emerald-500/40 hover:bg-emerald-950"
                         >
-                          <RefreshCw className="w-3.5 h-3.5 mr-1 text-emerald-400" /> Sync Roster from Google Sheet
+                          <RefreshCw className="w-3.5 h-3.5 mr-1 text-emerald-400" /> Re-read Roster Sheet
                         </Button>
                         <a
                           href={formConfig.googleSheetUrl || "https://docs.google.com/spreadsheets/d/1eZeQ_X89nSR_fma6eSbVaOuyXaZ8-ffO1KAaWoXFyCU/edit?usp=sharing"}
@@ -1032,7 +1014,7 @@ export default function AdminDashboardPage() {
                   {certificatesView.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
-                        No certificates generated yet in this session. Use the Generate Certificate button above.
+                        No eligible participants on the roster sheet yet. Add rows to the sheet, then refresh.
                       </td>
                     </tr>
                   ) : (

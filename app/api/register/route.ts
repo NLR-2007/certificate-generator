@@ -1,10 +1,13 @@
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
 import { DEFAULT_FORM_CONFIG, Participant } from "@/lib/db/mock-store";
 import { getRepository } from "@/lib/db/repository";
 
 export async function GET() {
-  const db = getRepository();
   try {
+    const db = getRepository();
     let config = await db.getFormConfig();
     if (!config || !Array.isArray(config.fields) || config.fields.length === 0) {
       config = DEFAULT_FORM_CONFIG;
@@ -16,8 +19,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const db = getRepository();
   try {
+    const db = getRepository();
     const body = await req.json().catch(() => ({}));
     const rawData = body.data || {};
     const data: Record<string, string> = {};
