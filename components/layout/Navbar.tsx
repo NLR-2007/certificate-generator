@@ -12,6 +12,7 @@ export const Navbar: React.FC = () => {
 
   const navLinks = [
     { href: "/", label: "Home" },
+    { href: "/register", label: "Register for Hackathon" },
     { href: "/generate", label: "Generate Certificate" },
     { href: "/verify", label: "Verify Certificate" },
     { href: "/admin", label: "Admin Portal" },
