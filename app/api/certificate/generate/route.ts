@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { z } from "zod";
 import { mockDb, Certificate } from "@/lib/db/mock-store";
-import { generateCertificatePDF, generateCertificateId } from "@/lib/certificate/generator";
+import { generateCertificatePDF, generateCertificateId, getBaseUrl } from "@/lib/certificate/generator";
 import { UnrenderableNameError } from "@/lib/certificate/text";
 
 const GenerateSchema = z.object({
@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { registrationId } = validation.data;
+    const baseUrl = getBaseUrl(req);
 
     // 1. Server-side Query Participant Details (Never trust client-supplied names!)
     const participant = mockDb.findParticipantByRegId(registrationId);
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
         registrationId: participant.registration_id,
         certificateId: existingCert.certificate_id,
         issueDate: new Date(existingCert.issue_date).toLocaleDateString("en-GB"),
+        baseUrl,
       });
 
       return NextResponse.json({
@@ -59,13 +61,12 @@ export async function POST(req: NextRequest) {
         certificateId: existingCert.certificate_id,
         participantName: participant.name,
         registrationId: participant.registration_id,
-        verificationUrl: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/verify/${existingCert.certificate_id}`,
+        verificationUrl: `${baseUrl}/verify/${existingCert.certificate_id}`,
         pdfBase64: pdfBuffer.toString("base64"),
       });
     }
 
     // 4. Generate Unique Certificate ID & Cryptographic Verification Token
-    // Retry on the (unlikely) chance of colliding with an already-issued ID.
     let certificateId = generateCertificateId("SIH26");
     for (let attempt = 0; attempt < 5 && mockDb.findCertificateById(certificateId); attempt++) {
       certificateId = generateCertificateId("SIH26");
@@ -74,7 +75,6 @@ export async function POST(req: NextRequest) {
     const issueDateStr = new Date().toISOString();
 
     // 5. Generate Serverless PDF Certificate using pdf-lib
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
     const pdfBuffer = await generateCertificatePDF({
       participantName: participant.name,
       registrationId: participant.registration_id,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { mockDb } from "@/lib/db/mock-store";
+import { getBaseUrl } from "@/lib/certificate/generator";
 
 const QuerySchema = z.object({
   registrationId: z.string().min(1, "Registration ID is required").max(50),
@@ -20,6 +21,7 @@ export async function GET(req: NextRequest) {
     }
 
     const regId = validation.data.registrationId;
+    const baseUrl = getBaseUrl(req);
 
     // 1. Query database / mock store
     const participant = mockDb.findParticipantByRegId(regId);
@@ -50,7 +52,7 @@ export async function GET(req: NextRequest) {
         ? {
             certificate_id: existingCertificate.certificate_id,
             pdf_url: existingCertificate.pdf_url,
-            verification_url: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/verify/${existingCertificate.certificate_id}`,
+            verification_url: `${baseUrl}/verify/${existingCertificate.certificate_id}`,
           }
         : null,
     });

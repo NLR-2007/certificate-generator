@@ -3,7 +3,7 @@ import { randomBytes } from "crypto";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/admin/guard";
 import { mockDb, Certificate, Participant } from "@/lib/db/mock-store";
-import { generateCertificatePDF, generateCertificateId } from "@/lib/certificate/generator";
+import { generateCertificatePDF, generateCertificateId, getBaseUrl } from "@/lib/certificate/generator";
 import { UnrenderableNameError } from "@/lib/certificate/text";
 
 const DEFAULT_EVENT = "Smart India Hackathon 2026";
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
 
     const event = eventName || participant?.event_name || DEFAULT_EVENT;
     const now = new Date().toISOString();
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    const baseUrl = getBaseUrl(req);
 
     // Keep the roster in step with what the admin just issued.
     let participantCreated = false;

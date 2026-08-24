@@ -21,6 +21,23 @@ export interface GenerateOptions {
   };
 }
 
+export function getBaseUrl(req?: any): string {
+  if (process.env.NEXT_PUBLIC_SITE_URL && !process.env.NEXT_PUBLIC_SITE_URL.includes("localhost")) {
+    return process.env.NEXT_PUBLIC_SITE_URL;
+  }
+  if (req && typeof req.headers?.get === "function") {
+    const host = req.headers.get("host");
+    const proto = req.headers.get("x-forwarded-proto") || "https";
+    if (host && !host.includes("localhost")) {
+      return `${proto}://${host}`;
+    }
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  return "https://certificategeneratornlr.vercel.app";
+}
+
 export async function generateCertificatePDF(options: GenerateOptions): Promise<Buffer> {
   const {
     participantName,
@@ -31,7 +48,7 @@ export async function generateCertificatePDF(options: GenerateOptions): Promise<
       month: "2-digit",
       year: "numeric",
     }),
-    baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
+    baseUrl = getBaseUrl(),
     customCoordinates,
   } = options;
 
