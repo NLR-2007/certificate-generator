@@ -2,6 +2,7 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fs from "fs";
 import path from "path";
 import { calculateFontSizeForName, getCenteredX } from "./fonts";
+import { CERTIFICATE_LAYOUT, fitTextSize, layoutCertificateIdCaption } from "./layout";
 import { generateVerificationQRCode } from "./qr";
 import { sanitizeForPdfText, UnrenderableNameError } from "./text";
 
@@ -72,10 +73,10 @@ export async function generateCertificatePDF(options: GenerateOptions): Promise<
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   // 3. Dynamic Font Sizing for Participant Name
-  // Position centered right above the underline line on SIH-participation-template.pdf (underline is at ~244pt)
-  const nameY = customCoordinates?.nameY ?? 253; 
-  const maxFontSize = customCoordinates?.nameFontSize ?? 32;
-  const maxWidth = width * 0.65; // Max bounding width for name
+  const nameLayout = CERTIFICATE_LAYOUT.name;
+  const nameY = customCoordinates?.nameY ?? nameLayout.y;
+  const maxFontSize = customCoordinates?.nameFontSize ?? nameLayout.maxFontSize;
+  const maxWidth = width * nameLayout.maxWidthRatio;
 
   // Standard PDF fonts are WinAnsi-encoded; drawing an unencodable glyph throws.
   const { text: safeName, unsupported } = sanitizeForPdfText(participantName);
@@ -91,9 +92,15 @@ export async function generateCertificatePDF(options: GenerateOptions): Promise<
   // string that actually gets drawn.
   const displayName = safeName.toUpperCase();
 
-  const fontSize = calculateFontSizeForName(displayName, fontBold, maxWidth, maxFontSize, 18);
+  const fontSize = calculateFontSizeForName(
+    displayName,
+    fontBold,
+    maxWidth,
+    maxFontSize,
+    nameLayout.minFontSize
+  );
   const textWidth = fontBold.widthOfTextAtSize(displayName, fontSize);
-  const nameX = getCenteredX(width / 2, textWidth, 24);
+  const nameX = getCenteredX(width / 2, textWidth, nameLayout.minX);
 
   // Draw Centered Participant Name in Deep Slate Navy
   page.drawText(displayName, {
@@ -109,9 +116,9 @@ export async function generateCertificatePDF(options: GenerateOptions): Promise<
   const qrBuffer = await generateVerificationQRCode(verificationUrl);
   const qrImage = await pdfDoc.embedPng(qrBuffer);
 
-  const qrSize = customCoordinates?.qrSize ?? 46;
-  const qrX = customCoordinates?.qrX ?? 40; 
-  const qrY = customCoordinates?.qrY ?? 28;
+  const qrSize = customCoordinates?.qrSize ?? CERTIFICATE_LAYOUT.qrCode.size;
+  const qrX = customCoordinates?.qrX ?? CERTIFICATE_LAYOUT.qrCode.x;
+  const qrY = customCoordinates?.qrY ?? CERTIFICATE_LAYOUT.qrCode.y;
 
   page.drawImage(qrImage, {
     x: qrX,
@@ -120,22 +127,33 @@ export async function generateCertificatePDF(options: GenerateOptions): Promise<
     height: qrSize,
   });
 
-  // 5. Draw Certificate ID & Issue Date neatly beside QR Code (stopping before signature line at X=165)
-  const detailsX = qrX + qrSize + 8; // X = 94
-  const detailsY = qrY + qrSize - 24; // Y = 50 (Sit cleanly below horizontal line)
+  // 5. Certificate ID and issue date, stacked under the QR code.
+  //
+  // They sit below the QR rather than beside it so they have the whole left
+  // margin to run into. Beside it there are only ~70pt before the signature
+  // block, which a full certificate ID has not fitted in since IDs started
+  // carrying the registration number.
+  const caption = CERTIFICATE_LAYOUT.caption;
+  const captionX = customCoordinates?.qrX ?? caption.x;
+  const idCaption = layoutCertificateIdCaption(certificateId, fontBold, caption);
 
-  page.drawText(`Certificate ID: ${certificateId}`, {
-    x: detailsX,
-    y: detailsY,
-    size: 7.5,
-    font: fontBold,
-    color: rgb(0.12, 0.23, 0.54), // Dark blue
-  });
+  let captionY = caption.y;
+  for (const line of idCaption.lines) {
+    page.drawText(line, {
+      x: captionX,
+      y: captionY,
+      size: idCaption.size,
+      font: fontBold,
+      color: rgb(0.12, 0.23, 0.54), // Dark blue
+    });
+    captionY -= caption.lineGap;
+  }
 
-  page.drawText(`Issued: ${issueDate}`, {
-    x: detailsX,
-    y: detailsY - 11,
-    size: 7.5,
+  const issuedText = `Issued: ${issueDate}`;
+  page.drawText(issuedText, {
+    x: captionX,
+    y: captionY,
+    size: fitTextSize(issuedText, fontRegular, caption.maxWidth, idCaption.size, caption.minFontSize),
     font: fontRegular,
     color: rgb(0.35, 0.42, 0.52),
   });

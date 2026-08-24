@@ -6,6 +6,11 @@ import {
   isAuthenticCertificateId,
   parseCertificateId,
 } from "../lib/certificate/signing";
+import {
+  CERTIFICATE_LAYOUT,
+  fitTextSize,
+  layoutCertificateIdCaption,
+} from "../lib/certificate/layout";
 import { mapRowsToParticipants } from "../lib/sheet/participants";
 import { parseCombinedMembers } from "../lib/sheet/members";
 import { calculateFontSizeForName, getCenteredX } from "../lib/certificate/fonts";
@@ -305,5 +310,74 @@ describe("Combined team-member cell parsing", () => {
       "2520090002",
     ]);
     expect(participants.every((p) => p.team_name === "InnoTech")).toBe(true);
+  });
+});
+
+describe("Certificate footer layout", () => {
+  /**
+   * Measured off the official artwork: the nearest signature-block text
+   * ("EDC-Cell & IIC KLHB") starts at x=202pt. The footer caption must stop
+   * short of it, or the certificate ID prints on top of the signature.
+   */
+  const SIGNATURE_BLOCK_LEFT_EDGE = 202;
+
+  const boldFont = async () => {
+    const doc = await PDFDocument.create();
+    return doc.embedFont(StandardFonts.HelveticaBold);
+  };
+
+  test("a full-length certificate ID caption stays clear of the signature block", async () => {
+    const font = await boldFont();
+    const { caption } = CERTIFICATE_LAYOUT;
+
+    const { lines, size } = layoutCertificateIdCaption(
+      certificateIdFor("2520080060"),
+      font,
+      caption
+    );
+
+    const widest = Math.max(...lines.map((l) => font.widthOfTextAtSize(l, size)));
+    expect(widest).toBeLessThanOrEqual(caption.maxWidth);
+    expect(caption.x + widest).toBeLessThan(SIGNATURE_BLOCK_LEFT_EDGE);
+  });
+
+  test("the caption sits below the QR code, not beside it", () => {
+    const { qrCode, caption } = CERTIFICATE_LAYOUT;
+    // Beside the QR there are only ~70pt before the signature block, which a
+    // full certificate ID has never fitted into.
+    expect(caption.y).toBeLessThan(qrCode.y);
+    expect(caption.x).toBe(qrCode.x);
+  });
+
+  test("drops the label before it truncates the ID", async () => {
+    const font = await boldFont();
+    const id = certificateIdFor("2520080060");
+
+    const tight = layoutCertificateIdCaption(id, font, {
+      maxWidth: 90,
+      maxFontSize: 7,
+      minFontSize: 5,
+    });
+
+    expect(tight.lines).toEqual([id]);
+  });
+
+  test("wraps rather than overflowing when even the bare ID will not fit", async () => {
+    const font = await boldFont();
+    const id = certificateIdFor("2520080060");
+
+    const verySmall = layoutCertificateIdCaption(id, font, {
+      maxWidth: 30,
+      maxFontSize: 7,
+      minFontSize: 5,
+    });
+
+    expect(verySmall.lines).toEqual(["Certificate ID:", id]);
+  });
+
+  test("fitTextSize never returns a size above the requested maximum", async () => {
+    const font = await boldFont();
+    expect(fitTextSize("x", font, 500, 7, 5)).toBe(7);
+    expect(fitTextSize("x".repeat(400), font, 10, 7, 5)).toBe(5);
   });
 });

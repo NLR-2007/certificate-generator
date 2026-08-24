@@ -38,6 +38,10 @@ export default function AdminDashboardPage() {
   // Admin Quick Generator State
   const [adminGenId, setAdminGenId] = useState("");
   const [adminGenName, setAdminGenName] = useState("");
+  const [adminGenEvent, setAdminGenEvent] = useState("");
+  // Reveals the name/event overrides used to help a participant whose roster row
+  // is missing or wrong. Forced on when the server says a name is required.
+  const [manualDetails, setManualDetails] = useState(false);
   const [needsName, setNeedsName] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
@@ -45,6 +49,9 @@ export default function AdminDashboardPage() {
     participantName: string;
     certificateId: string;
     pdfBase64: string;
+    verificationUrl?: string;
+    verifiable?: boolean;
+    warning?: string | null;
   } | null>(null);
 
   const [syncingSheet, setSyncingSheet] = useState(false);
@@ -148,7 +155,18 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleAdminGenerateCertificate = async (regIdToGen: string, nameOverride?: string) => {
+  /**
+   * Issues a certificate from the admin side.
+   *
+   * `nameOverride` and `eventOverride` are what make this useful for a
+   * participant whose roster row is missing or wrong: the public route always
+   * prints the sheet’s name and refuses anyone not on it.
+   */
+  const handleAdminGenerateCertificate = async (
+    regIdToGen: string,
+    nameOverride?: string,
+    eventOverride?: string
+  ) => {
     const cleanId = regIdToGen.trim();
     if (!cleanId) return;
 
@@ -157,26 +175,15 @@ export default function AdminDashboardPage() {
     setGenerateError(null);
 
     try {
-      const res = await fetch("/api/admin/certificates/generate", {
+      const data = await fetchJson<any>("/api/admin/certificates/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           registrationId: cleanId,
           ...(nameOverride?.trim() ? { participantName: nameOverride.trim() } : {}),
+          ...(eventOverride?.trim() ? { eventName: eventOverride.trim() } : {}),
         }),
       });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (res.status === 401) {
-        router.push("/admin/login");
-        return;
-      }
-
-      if (!res.ok) {
-        if (data.needsName) setNeedsName(true);
-        throw new Error(data.error || "Failed to generate certificate.");
-      }
 
       setNeedsName(false);
       const participantName = data.participantName || cleanId;
@@ -185,11 +192,10 @@ export default function AdminDashboardPage() {
         participantName,
         certificateId: data.certificateId,
         pdfBase64: data.pdfBase64,
+        verificationUrl: data.verificationUrl,
+        verifiable: data.verifiable,
+        warning: data.warning,
       });
-
-      if (data.participantCreated) {
-        loadData();
-      }
 
       setParticipants((prev) =>
         prev.map((p) =>
@@ -205,13 +211,22 @@ export default function AdminDashboardPage() {
           participant_name: participantName,
           registration_id: cleanId,
           event_name: data.eventName || "Smart India Hackathon 2026",
-          issue_date: new Date().toISOString(),
+          issue_date: data.issueDate || new Date().toISOString(),
           status: data.status || "VALID",
         },
         ...prev.filter((c) => c.certificate_id !== data.certificateId),
       ]);
     } catch (err: any) {
-      setGenerateError(err.message || "Certificate Generation Error");
+      if (err?.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+      // The server asks for a name when the roll number is not on the sheet.
+      if (/not on the roster sheet/i.test(err?.message || "")) {
+        setNeedsName(true);
+        setManualDetails(true);
+      }
+      setGenerateError(err?.message || "Certificate Generation Error");
     } finally {
       setGeneratingId(null);
     }
@@ -418,49 +433,92 @@ export default function AdminDashboardPage() {
         <CardHeader>
           <CardTitle className="text-base flex items-center">
             <Sparkles className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-2" />
-            Admin Certificate Generation Hub
+            Issue a Certificate
           </CardTitle>
           <CardDescription>
-            Directly generate official PDF certificates for any registered student.
+            Issue for any roll number — including participants the public page turns
+            away because their roster row is missing, misspelled, or marked ineligible.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              handleAdminGenerateCertificate(adminGenId, needsName ? adminGenName : undefined);
+              handleAdminGenerateCertificate(
+                adminGenId,
+                manualDetails ? adminGenName : undefined,
+                manualDetails ? adminGenEvent : undefined
+              );
             }}
-            className="flex flex-col sm:flex-row gap-3"
+            className="space-y-3"
           >
-            <Input
-              placeholder="Enter Registration ID / Roll Number (e.g. 2520090002)..."
-              value={adminGenId}
-              onChange={(e) => {
-                setAdminGenId(e.target.value);
-                setNeedsName(false);
-                setGenerateError(null);
-              }}
-              className="flex-1"
-            />
-
-            {needsName && (
+            <div className="flex flex-col sm:flex-row gap-3">
               <Input
-                placeholder="Participant Name (required for new roll number)..."
-                value={adminGenName}
-                onChange={(e) => setAdminGenName(e.target.value)}
-                className="flex-1 border-amber-500/50"
-                required
+                aria-label="Registration ID or roll number"
+                placeholder="Registration ID / Roll Number (e.g. 2520090002)..."
+                value={adminGenId}
+                onChange={(e) => {
+                  setAdminGenId(e.target.value);
+                  setNeedsName(false);
+                  setGenerateError(null);
+                }}
+                className="flex-1"
               />
-            )}
+              <Button
+                type="submit"
+                isLoading={generatingId === adminGenId && !!adminGenId}
+                className="bg-slate-900 dark:bg-white text-white dark:text-black font-bold px-6 hover:bg-slate-800 dark:hover:bg-gray-200"
+              >
+                <FileCheck className="w-4 h-4 mr-2 text-blue-600 dark:text-blue-400" />
+                Generate Certificate
+              </Button>
+            </div>
 
-            <Button
-              type="submit"
-              isLoading={generatingId === adminGenId && !!adminGenId}
-              className="bg-slate-900 dark:bg-white text-white dark:text-black font-bold px-6 hover:bg-slate-800 dark:hover:bg-gray-200"
-            >
-              <FileCheck className="w-4 h-4 mr-2 text-blue-600 dark:text-blue-400" />
-              Generate Certificate
-            </Button>
+            <label className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer w-fit">
+              <input
+                type="checkbox"
+                checked={manualDetails}
+                onChange={(e) => setManualDetails(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 rounded border-slate-400 accent-blue-600"
+              />
+              <span>
+                This participant has a problem — let me enter their details manually
+              </span>
+            </label>
+
+            {manualDetails && (
+              <div className="flex flex-col sm:flex-row gap-3 rounded-xl border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 p-3">
+                <div className="flex-1 space-y-1">
+                  <label
+                    htmlFor="admin-gen-name"
+                    className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400"
+                  >
+                    Name to print {needsName && "(required — not on the sheet)"}
+                  </label>
+                  <Input
+                    id="admin-gen-name"
+                    placeholder="e.g. Jadala Sohan"
+                    value={adminGenName}
+                    onChange={(e) => setAdminGenName(e.target.value)}
+                    required={needsName}
+                  />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <label
+                    htmlFor="admin-gen-event"
+                    className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400"
+                  >
+                    Event (optional)
+                  </label>
+                  <Input
+                    id="admin-gen-event"
+                    placeholder="Smart India Hackathon 2026"
+                    value={adminGenEvent}
+                    onChange={(e) => setAdminGenEvent(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
           </form>
 
           {generateError && (
@@ -490,6 +548,34 @@ export default function AdminDashboardPage() {
                   </Button>
                 </a>
               </div>
+
+              {generatedResult.warning && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3"
+                >
+                  <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                  <div className="space-y-0.5 text-xs">
+                    <p className="font-bold text-amber-300">
+                      {generatedResult.verifiable
+                        ? "The PDF and the sheet disagree"
+                        : "This certificate will not verify"}
+                    </p>
+                    <p className="text-amber-200/90 leading-relaxed">{generatedResult.warning}</p>
+                  </div>
+                </div>
+              )}
+
+              {generatedResult.verificationUrl && (
+                <a
+                  href={generatedResult.verificationUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block text-xs font-semibold text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
+                >
+                  Check the public verification page ↗
+                </a>
+              )}
 
               <div className="w-full h-80 border border-slate-800 rounded-lg overflow-hidden bg-slate-950">
                 <iframe
