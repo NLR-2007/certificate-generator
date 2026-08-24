@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Participant } from "@/lib/db/mock-store";
+import { DEFAULT_FORM_CONFIG, Participant } from "@/lib/db/mock-store";
 import { getRepository } from "@/lib/db/repository";
 
 export async function GET() {
   const db = getRepository();
   try {
-    const config = await db.getFormConfig();
+    let config = await db.getFormConfig();
+    if (!config || !Array.isArray(config.fields) || config.fields.length === 0) {
+      config = DEFAULT_FORM_CONFIG;
+    }
     return NextResponse.json({ success: true, config });
   } catch (error) {
-    return NextResponse.json({ error: "Failed to load hackathon form." }, { status: 500 });
+    return NextResponse.json({ success: true, config: DEFAULT_FORM_CONFIG });
   }
 }
 

@@ -6,12 +6,16 @@ import { Sparkles, CheckCircle2, Rocket, ArrowRight, Users, UserPlus } from "luc
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
-import { FormConfig, FormField } from "@/lib/db/mock-store";
+import { DEFAULT_FORM_CONFIG, FormConfig, FormField } from "@/lib/db/mock-store";
 
 export default function HackathonRegisterPage() {
-  const [formConfig, setFormConfig] = useState<FormConfig | null>(null);
-  const [formData, setFormData] = useState<Record<string, string>>({
-    team_member_count: "1",
+  const [formConfig, setFormConfig] = useState<FormConfig>(DEFAULT_FORM_CONFIG);
+  const [formData, setFormData] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = { team_member_count: "1" };
+    DEFAULT_FORM_CONFIG.fields.forEach((f: FormField) => {
+      initial[f.id] = f.type === "select" && f.options?.[0] ? f.options[0] : "";
+    });
+    return initial;
   });
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -32,24 +36,22 @@ export default function HackathonRegisterPage() {
     fetch("/api/register")
       .then(async (res) => {
         const data = await res.json().catch(() => null);
-        if (!res.ok || !data) {
-          throw new Error((data && data.error) || "Failed to load registration form.");
-        }
         return data;
       })
       .then((data) => {
-        if (data.success && data.config) {
+        if (data?.success && data?.config) {
           setFormConfig(data.config);
           const initial: Record<string, string> = { team_member_count: "1" };
-          data.config.fields.forEach((f: FormField) => {
+          data.config.fields?.forEach((f: FormField) => {
             initial[f.id] = f.type === "select" && f.options?.[0] ? f.options[0] : "";
           });
           setFormData(initial);
-        } else {
-          throw new Error(data.error || "Failed to load registration form.");
         }
       })
-      .catch((err) => setError(err.message || "Failed to load registration form."))
+      .catch(() => {
+        // Fall back gracefully to DEFAULT_FORM_CONFIG
+        setFormConfig(DEFAULT_FORM_CONFIG);
+      })
       .finally(() => setFetching(false));
   }, []);
 
