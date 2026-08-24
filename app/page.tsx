@@ -160,7 +160,14 @@ export default function HomePage() {
       {/* FEATURES & HIGHLIGHTS SECTION */}
       <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12 text-center">
         <div className="space-y-3">
-          <h4 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white heading-font">Features</h4>
+          <Link
+            href="/admin"
+            className="inline-block group cursor-pointer"
+          >
+            <h4 className="text-xl font-bold tracking-tight text-white group-hover:text-blue-400 transition-colors heading-font flex items-center justify-center gap-1.5">
+              Features <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+            </h4>
+          </Link>
           <h2 className="text-4xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-5xl heading-font">
             Built for Verification & Integrity
           </h2>

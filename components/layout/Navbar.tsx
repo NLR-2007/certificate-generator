@@ -12,9 +12,9 @@ export const Navbar: React.FC = () => {
 
   const navLinks = [
     { href: "/", label: "Home" },
-    { href: "/admin", label: "Features" },
     { href: "/generate", label: "Generate Certificate" },
     { href: "/verify", label: "Verify Certificate" },
+    { href: "/admin", label: "Admin Portal" },
   ];
 
   return (

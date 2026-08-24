@@ -21,6 +21,9 @@ export default function AdminDashboardPage() {
 
   // Admin Quick Generator State
   const [adminGenId, setAdminGenId] = useState("");
+  const [adminGenName, setAdminGenName] = useState("");
+  const [needsName, setNeedsName] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [generatedResult, setGeneratedResult] = useState<{
     participantName: string;
@@ -100,35 +103,54 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleAdminGenerateCertificate = async (regIdToGen: string) => {
+  // Admins issue through the admin endpoint, which accepts any registration ID -
+  // including ones not in the roster (given a name) and participants flagged
+  // ineligible. The public endpoint keeps its restrictions.
+  const handleAdminGenerateCertificate = async (regIdToGen: string, nameOverride?: string) => {
     const cleanId = regIdToGen.trim();
     if (!cleanId) return;
 
     setGeneratingId(cleanId);
     setGeneratedResult(null);
+    setGenerateError(null);
 
     try {
-      const res = await fetch("/api/certificate/generate", {
+      const res = await fetch("/api/admin/certificates/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ registrationId: cleanId }),
+        body: JSON.stringify({
+          registrationId: cleanId,
+          ...(nameOverride?.trim() ? { participantName: nameOverride.trim() } : {}),
+        }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 401) {
+        router.push("/admin/login");
+        return;
+      }
+
       if (!res.ok) {
+        // The roll number is unknown - prompt for a name instead of failing.
+        if (data.needsName) setNeedsName(true);
         throw new Error(data.error || "Failed to generate certificate.");
       }
 
-      const participantName =
-        data.participantName ||
-        participants.find((p) => p.registration_id === cleanId)?.name ||
-        cleanId;
+      setNeedsName(false);
+
+      const participantName = data.participantName || cleanId;
 
       setGeneratedResult({
         participantName,
         certificateId: data.certificateId,
         pdfBase64: data.pdfBase64,
       });
+
+      // A brand new roll number was added to the roster - reload it.
+      if (data.participantCreated) {
+        loadData();
+      }
 
       // Update participant list state
       setParticipants((prev) =>
@@ -151,7 +173,7 @@ export default function AdminDashboardPage() {
         ...prev.filter((c) => c.certificate_id !== data.certificateId),
       ]);
     } catch (err: any) {
-      alert(err.message || "Certificate Generation Error");
+      setGenerateError(err.message || "Certificate Generation Error");
     } finally {
       setGeneratingId(null);
     }
