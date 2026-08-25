@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { fetchJson } from "@/lib/utils/api";
+import { BulkProgress, buildCertificatesZip, triggerDownload } from "@/lib/admin/bulk-download";
+import { certificateFileName } from "@/lib/certificate/filename";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { CertificateRecord, FormConfig, FormField, FormSubmission } from "@/lib/db/mock-store";
 
@@ -28,6 +30,8 @@ export default function AdminDashboardPage() {
   const [certificates, setCertificates] = useState<any[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [rosterStatus, setRosterStatus] = useState<{ source: string; note: string | null } | null>(null);
+  const [zipProgress, setZipProgress] = useState<BulkProgress | null>(null);
+  const [zipMessage, setZipMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form Builder & Submissions State
@@ -261,6 +265,43 @@ export default function AdminDashboardPage() {
       setGenerateError(err?.message || "Certificate Generation Error");
     } finally {
       setGeneratingId(null);
+    }
+  };
+
+  /**
+   * Downloads every issued certificate as one ZIP.
+   *
+   * Built in the browser from one request per certificate - see
+   * lib/admin/bulk-download for why the server cannot produce the archive.
+   */
+  const handleDownloadAllZip = async () => {
+    if (zipProgress || certificatesView.length === 0) return;
+
+    setZipMessage(null);
+    setZipProgress({ completed: 0, total: certificatesView.length, failed: 0 });
+
+    try {
+      const { blob, included, failed } = await buildCertificatesZip(
+        certificatesView.map((c) => ({
+          registration_id: c.registration_id,
+          participant_name: c.participant_name,
+          event_name: c.event_name,
+        })),
+        setZipProgress
+      );
+
+      const stamp = new Date().toISOString().slice(0, 10);
+      triggerDownload(blob, `SIH2026_Certificates_${stamp}.zip`);
+
+      setZipMessage(
+        failed.length === 0
+          ? `Downloaded ${included} certificates.`
+          : `Downloaded ${included} certificates. ${failed.length} could not be generated - see _failed.txt inside the ZIP.`
+      );
+    } catch (error: any) {
+      setZipMessage(error?.message || "Could not build the certificate archive.");
+    } finally {
+      setZipProgress(null);
     }
   };
 
@@ -600,7 +641,7 @@ export default function AdminDashboardPage() {
                 </div>
                 <a
                   href={`data:application/pdf;base64,${generatedResult.pdfBase64}`}
-                  download={`${generatedResult.participantName.replace(/\s+/g, "_")}_SIH2026.pdf`}
+                  download={certificateFileName(generatedResult.participantName)}
                 >
                   <Button variant="success" size="sm" className="font-bold">
                     <Download className="w-4 h-4 mr-1.5" />
@@ -1141,8 +1182,52 @@ export default function AdminDashboardPage() {
       {activeTab === "certificates" && (
         <Card>
           <CardHeader>
-            <CardTitle>Issued Certificates & Revocation Controls</CardTitle>
-            <CardDescription>View issued certificates or invalidate revoked records.</CardDescription>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle>Issued Certificates & Revocation Controls</CardTitle>
+                <CardDescription>View issued certificates or invalidate revoked records.</CardDescription>
+              </div>
+
+              <div className="flex flex-col items-stretch gap-1.5 sm:items-end">
+                <Button
+                  onClick={handleDownloadAllZip}
+                  isLoading={zipProgress !== null}
+                  disabled={certificatesView.length === 0}
+                  variant="outline"
+                  size="sm"
+                  className="whitespace-nowrap text-xs font-bold"
+                >
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  {zipProgress
+                    ? `Preparing ${zipProgress.completed} / ${zipProgress.total}...`
+                    : `Download all ${certificatesView.length} as ZIP`}
+                </Button>
+
+                {zipProgress && (
+                  <div
+                    className="h-1 w-full overflow-hidden rounded-full bg-slate-200 sm:w-48 dark:bg-slate-800"
+                    role="progressbar"
+                    aria-valuenow={zipProgress.completed}
+                    aria-valuemin={0}
+                    aria-valuemax={zipProgress.total}
+                    aria-label="Building certificate archive"
+                  >
+                    <div
+                      className="h-full bg-blue-600 transition-[width] duration-200"
+                      style={{
+                        width: `${Math.round((zipProgress.completed / Math.max(zipProgress.total, 1)) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                )}
+
+                {zipMessage && (
+                  <p className="max-w-xs text-[11px] leading-relaxed text-slate-600 sm:text-right dark:text-slate-400">
+                    {zipMessage}
+                  </p>
+                )}
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl">
@@ -1184,6 +1269,13 @@ export default function AdminDashboardPage() {
                             className="text-blue-500 font-semibold hover:underline mr-2"
                           >
                             Verify Page
+                          </a>
+                          {/* The route sets Content-Disposition, so a plain link saves the file. */}
+                          <a
+                            href={`/api/admin/certificates/pdf?registrationId=${encodeURIComponent(c.registration_id)}`}
+                            className="text-blue-500 font-semibold hover:underline mr-2"
+                          >
+                            PDF
                           </a>
                           <Button
                             size="sm"

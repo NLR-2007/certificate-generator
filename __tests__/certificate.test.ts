@@ -14,6 +14,7 @@ import {
 import { mapRowsToParticipants } from "../lib/sheet/participants";
 import { parseCombinedMembers } from "../lib/sheet/members";
 import { mapRowsToSubmissions } from "../lib/sheet/submissions";
+import { certificateFileName } from "../lib/certificate/filename";
 import { INITIAL_PARTICIPANTS } from "../lib/db/mock-store";
 import type { FormField } from "../lib/db/mock-store";
 import { calculateFontSizeForName, getCenteredX } from "../lib/certificate/fonts";
@@ -484,5 +485,36 @@ describe("Roster merging", () => {
 
   test("the bundled roster is not empty, so it is a real floor", () => {
     expect(INITIAL_PARTICIPANTS.length).toBeGreaterThan(100);
+  });
+});
+
+describe("Certificate download filenames", () => {
+  test("builds a readable filename from name and event", () => {
+    expect(certificateFileName("Akhil Reddy", "SIH 2026")).toBe("Akhil_Reddy_SIH_2026_Certificate.pdf");
+  });
+
+  /**
+   * Names come from a spreadsheet, so they may contain path separators. Inside
+   * a ZIP those let an entry escape the folder it is extracted into.
+   */
+  test("strips characters that could escape a directory", () => {
+    const name = certificateFileName("../../etc/passwd", "SIH2026");
+    expect(name).not.toContain("/");
+    expect(name).not.toContain("..");
+    expect(name).toBe("etc_passwd_SIH2026_Certificate.pdf");
+  });
+
+  test("handles quotes, control characters and stray punctuation", () => {
+    expect(certificateFileName('A"B\nC', "SIH2026")).toBe("A_B_C_SIH2026_Certificate.pdf");
+    expect(certificateFileName("  Dr. G Kalpana  ", "SIH2026")).toBe("Dr_G_Kalpana_SIH2026_Certificate.pdf");
+  });
+
+  test("falls back rather than producing a nameless file", () => {
+    expect(certificateFileName("!!!", "SIH2026")).toBe("Participant_SIH2026_Certificate.pdf");
+  });
+
+  test("caps the length so the filename stays valid", () => {
+    const name = certificateFileName("A".repeat(400), "SIH2026");
+    expect(name.length).toBeLessThan(160);
   });
 });

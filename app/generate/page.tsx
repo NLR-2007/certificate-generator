@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/Input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { fetchJson } from "@/lib/utils/api";
+import { certificateFileName } from "@/lib/certificate/filename";
 
 function GenerateContent() {
   const searchParams = useSearchParams();
@@ -249,7 +250,7 @@ function GenerateContent() {
                   {generatedCert.pdf_base64 && (
                     <a
                       href={`data:application/pdf;base64,${generatedCert.pdf_base64}`}
-                      download={`${participant.name.replace(/\s+/g, "_")}_SIH2026_Certificate.pdf`}
+                      download={certificateFileName(participant.name, participant.event_name)}
                     >
                       <Button variant="success" className="font-bold">
                         <Download className="w-4 h-4 mr-2" />
