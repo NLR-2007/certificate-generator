@@ -114,39 +114,57 @@ function bundledParticipants(): SheetParticipant[] {
 export class SheetRepository implements DataRepository {
   readonly backend = "sheet" as const;
 
+  /**
+   * The people entitled to a certificate.
+   *
+   * The bundled roster of confirmed SIH 2026 participants is the floor, and
+   * sheet rows are merged on top of it: a sheet row for a registration id
+   * already bundled replaces that entry (so a corrected name or an `Eligible`
+   * of FALSE takes effect), and any other row is an addition.
+   *
+   * The sheet does not *replace* the roster. It did once, and a single
+   * registration landing in the sheet cut the roster from 289 people to 1 -
+   * taking every already-issued certificate out of verification with it. A
+   * roster may only ever grow or be amended here, never be emptied by an
+   * unrelated sheet edit.
+   */
   private async roster(): Promise<SheetParticipant[]> {
+    const bundled = bundledParticipants();
     const url = rosterSheetUrl();
 
     if (!url) {
       lastRosterSource = "bundled";
       lastRosterNote = "No roster sheet is configured. Set PARTICIPANTS_SHEET_URL.";
-      return bundledParticipants();
+      return bundled;
     }
+
+    let fromSheet: SheetParticipant[] = [];
 
     try {
       const rows = await fetchSheetRows(url);
-      const participants = mapRowsToParticipants(rows, { eventName: eventName() });
+      fromSheet = mapRowsToParticipants(rows, { eventName: eventName() });
 
-      if (participants.length > 0) {
-        lastRosterSource = "sheet";
-        lastRosterNote = null;
-        return participants;
-      }
-
-      lastRosterSource = "bundled";
+      lastRosterSource = fromSheet.length > 0 ? "sheet" : "bundled";
       lastRosterNote =
-        rows.length === 0
-          ? "The roster sheet has no data rows yet, so the bundled roster is in use."
-          : `The roster sheet has ${rows.length} rows but no recognisable Registration ID and Name columns, so the bundled roster is in use.`;
-      return bundledParticipants();
+        fromSheet.length > 0
+          ? null
+          : rows.length === 0
+            ? "The roster sheet has no data rows yet, so only the bundled roster is in use."
+            : `The roster sheet has ${rows.length} rows but no recognisable Registration ID and Name columns, so only the bundled roster is in use.`;
     } catch (error) {
       const message =
         error instanceof SheetUnavailableError ? error.message : "The roster sheet could not be read.";
       console.warn("Roster sheet unavailable, using bundled roster:", message);
       lastRosterSource = "bundled";
-      lastRosterNote = `${message} The bundled roster is in use.`;
-      return bundledParticipants();
+      lastRosterNote = `${message} Only the bundled roster is in use.`;
     }
+
+    const merged = new Map<string, SheetParticipant>();
+    for (const participant of [...bundled, ...fromSheet]) {
+      merged.set(normaliseRegistrationId(participant.registration_id), participant);
+    }
+
+    return Array.from(merged.values());
   }
 
   private async findByRegistrationId(registrationId: string): Promise<SheetParticipant | undefined> {

@@ -14,6 +14,7 @@ import {
 import { mapRowsToParticipants } from "../lib/sheet/participants";
 import { parseCombinedMembers } from "../lib/sheet/members";
 import { mapRowsToSubmissions } from "../lib/sheet/submissions";
+import { INITIAL_PARTICIPANTS } from "../lib/db/mock-store";
 import type { FormField } from "../lib/db/mock-store";
 import { calculateFontSizeForName, getCenteredX } from "../lib/certificate/fonts";
 import { sanitizeForPdfText } from "../lib/certificate/text";
@@ -446,5 +447,42 @@ describe("Registration sheet row mapping", () => {
   test("keeps columns the form does not know about", () => {
     const [submission] = mapRowsToSubmissions([liveRow], []);
     expect(submission.data["No. of Members"]).toBe("1");
+  });
+});
+
+describe("Roster merging", () => {
+  const defaults = { eventName: "Smart India Hackathon 2026" };
+
+  /**
+   * A single registration landing in the sheet once cut the roster from 289
+   * people to 1, taking every already-issued certificate out of verification.
+   * The sheet amends and extends the bundled roster; it never replaces it.
+   */
+  test("a sheet row amends the bundled entry it matches, and adds the rest", () => {
+    const bundled = INITIAL_PARTICIPANTS.map((p) => ({ ...p, revoked: false }));
+    const fromSheet = mapRowsToParticipants(
+      [
+        { "Leader Roll ID": "2520090002", "Leader Name": "Marri H (corrected)" },
+        { "Leader Roll ID": "9999999999", "Leader Name": "Newly Registered" },
+      ],
+      defaults
+    );
+
+    const merged = new Map<string, (typeof bundled)[number]>();
+    for (const p of [...bundled, ...fromSheet]) {
+      merged.set(p.registration_id.trim().toLowerCase(), p);
+    }
+    const roster = Array.from(merged.values());
+
+    // One amendment plus one addition: never fewer than we started with.
+    expect(roster.length).toBe(bundled.length + 1);
+    expect(roster.find((p) => p.registration_id === "2520090002")?.name).toBe("Marri H (corrected)");
+    expect(roster.some((p) => p.registration_id === "9999999999")).toBe(true);
+    // A bundled participant untouched by the sheet is still on the roster.
+    expect(roster.some((p) => p.registration_id === bundled[bundled.length - 1].registration_id)).toBe(true);
+  });
+
+  test("the bundled roster is not empty, so it is a real floor", () => {
+    expect(INITIAL_PARTICIPANTS.length).toBeGreaterThan(100);
   });
 });
