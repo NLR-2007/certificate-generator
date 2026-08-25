@@ -10,6 +10,14 @@ import { fetchJson } from "@/lib/utils/api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { CertificateRecord, FormConfig, FormField, FormSubmission } from "@/lib/db/mock-store";
 
+/** A sheet row may carry no timestamp, or one Date cannot parse. */
+function formatSubmittedAt(value: string): string {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+}
+
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"participants" | "certificates" | "form" | "templates" | "import">("participants");
@@ -1111,7 +1119,7 @@ export default function AdminDashboardPage() {
                         <tr key={sub.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                           <td className="px-4 py-3 font-mono font-bold text-emerald-600 dark:text-emerald-400">{sub.id}</td>
                           <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
-                            {new Date(sub.submitted_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                            {formatSubmittedAt(sub.submitted_at)}
                           </td>
                           {formConfig?.fields.map((f) => (
                             <td key={f.id} className="px-4 py-3 font-medium text-slate-900 dark:text-slate-200">

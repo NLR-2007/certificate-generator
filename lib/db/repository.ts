@@ -13,6 +13,7 @@ import {
   invalidateSheetCache,
 } from "@/lib/sheet/client";
 import { SheetParticipant, mapRowsToParticipants } from "@/lib/sheet/participants";
+import { mapRowsToSubmissions } from "@/lib/sheet/submissions";
 import {
   DEFAULT_EVENT_PREFIX,
   certificateIdFor,
@@ -64,12 +65,32 @@ export interface DataRepository {
  */
 let formConfig: FormConfig = DEFAULT_FORM_CONFIG;
 
+/**
+ * The sheet listing who is entitled to a certificate.
+ *
+ * Falls back to the registration sheet when no dedicated roster is configured,
+ * which is right for a single event: whoever registered is who took part. Point
+ * `PARTICIPANTS_SHEET_URL` at its own sheet to separate them - otherwise the
+ * roster changes every time somebody fills in the registration form.
+ */
 function rosterSheetUrl(): string | undefined {
   return process.env.PARTICIPANTS_SHEET_URL?.trim() || formConfig.googleSheetUrl;
 }
 
+/** The sheet the registration form's webhook writes into. Always the form's own. */
+function submissionsSheetUrl(): string | undefined {
+  return formConfig.googleSheetUrl;
+}
+
+/**
+ * The event printed on certificates and shown when verifying.
+ *
+ * Not `formConfig.title` - that is the registration form's heading ("Hackathon
+ * Registration Form"), which is not the name of an event and read badly on a
+ * certificate.
+ */
 function eventName(): string {
-  return process.env.EVENT_NAME?.trim() || formConfig.title || "Smart India Hackathon 2026";
+  return process.env.EVENT_NAME?.trim() || "Smart India Hackathon 2026";
 }
 
 /**
@@ -229,19 +250,21 @@ export class SheetRepository implements DataRepository {
     return mockDb.saveFormSubmission(data);
   }
 
-  /** Live registrations, read back out of the sheet the webhook writes to. */
+  /**
+   * Live registrations, read back out of the sheet the webhook writes to.
+   *
+   * Rows are translated onto the form's field ids: the sheet is keyed by its own
+   * headers, and the responses table reads by field id.
+   */
   async getFormSubmissions(): Promise<FormSubmission[]> {
-    const url = rosterSheetUrl();
+    const url = submissionsSheetUrl();
     if (!url) return mockDb.getFormSubmissions();
 
     try {
       const rows = await fetchSheetRows(url);
-      return rows.map((row, index) => ({
-        id: `SUB-${index + 1}`,
-        submitted_at:
-          row["Timestamp"] || row["timestamp"] || row["Submitted At"] || new Date().toISOString(),
-        data: row,
-      }));
+      const submissions = mapRowsToSubmissions(rows, formConfig.fields);
+      // Newest first, matching how the dashboard reads them.
+      return submissions.reverse();
     } catch (error) {
       console.warn("Could not read submissions from the sheet:", error);
       return mockDb.getFormSubmissions();

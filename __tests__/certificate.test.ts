@@ -13,6 +13,8 @@ import {
 } from "../lib/certificate/layout";
 import { mapRowsToParticipants } from "../lib/sheet/participants";
 import { parseCombinedMembers } from "../lib/sheet/members";
+import { mapRowsToSubmissions } from "../lib/sheet/submissions";
+import type { FormField } from "../lib/db/mock-store";
 import { calculateFontSizeForName, getCenteredX } from "../lib/certificate/fonts";
 import { sanitizeForPdfText } from "../lib/certificate/text";
 import { parseAndValidateCSV } from "../lib/admin/csv";
@@ -379,5 +381,70 @@ describe("Certificate footer layout", () => {
     const font = await boldFont();
     expect(fitTextSize("x", font, 500, 7, 5)).toBe(7);
     expect(fitTextSize("x".repeat(400), font, 10, 7, 5)).toBe(5);
+  });
+});
+
+describe("Registration sheet row mapping", () => {
+  // The exact row Google Forms writes for a one-person team.
+  const liveRow = {
+    Timestamp: "8/25/2026 10:55:07",
+    "Leader Name": "NLR",
+    "Leader Roll ID": "2520030366",
+    Email: "nimmalokeshreddy@klh.edu",
+    Phone: "7989405968",
+    Department: "Computer Science & Engineering (CSE)",
+    "Team Name": "Black Panthers",
+    "No. of Members": "1",
+    "All Team Member Names & IDs": "Leader: NLR (2520030366)",
+    "Project Title": "Kisaan Krushi",
+  };
+
+  test("strips the role label from a member entry", () => {
+    expect(parseCombinedMembers("Leader: NLR (2520030366)")).toEqual([
+      { name: "NLR", registrationId: "2520030366" },
+    ]);
+    expect(parseCombinedMembers("Member 2 - Marri Hruthika (2520090002)")).toEqual([
+      { name: "Marri Hruthika", registrationId: "2520090002" },
+    ]);
+  });
+
+  test("a leader restated in the members cell does not become a duplicate", () => {
+    const participants = mapRowsToParticipants([liveRow], {
+      eventName: "Smart India Hackathon 2026",
+    });
+
+    expect(participants).toHaveLength(1);
+    expect(participants[0].registration_id).toBe("2520030366");
+    // Not "Leader: NLR", and not overwritten by the members cell.
+    expect(participants[0].name).toBe("NLR");
+    expect(participants[0].email).toBe("nimmalokeshreddy@klh.edu");
+  });
+
+  test("maps sheet headers onto the registration form's field ids", () => {
+    const fields: FormField[] = [
+      { id: "name", label: "Full Name (As per College Records)", type: "text", required: true },
+      { id: "registration_id", label: "Roll Number / Reg ID", type: "text", required: true },
+      { id: "email", label: "Student Email Address", type: "email", required: true },
+      { id: "phone", label: "WhatsApp Contact Number", type: "tel", required: true },
+      { id: "department", label: "Department / Campus", type: "select", required: true },
+      { id: "team_name", label: "Hackathon Team Name", type: "text", required: true },
+      { id: "project_title", label: "Proposed Project Title / Idea", type: "textarea", required: false },
+    ];
+
+    const [submission] = mapRowsToSubmissions([liveRow], fields);
+
+    // Without this translation every cell in the responses table renders "—".
+    expect(submission.data.name).toBe("NLR");
+    expect(submission.data.registration_id).toBe("2520030366");
+    expect(submission.data.email).toBe("nimmalokeshreddy@klh.edu");
+    expect(submission.data.phone).toBe("7989405968");
+    expect(submission.data.team_name).toBe("Black Panthers");
+    expect(submission.data.project_title).toBe("Kisaan Krushi");
+    expect(submission.submitted_at).toBe("8/25/2026 10:55:07");
+  });
+
+  test("keeps columns the form does not know about", () => {
+    const [submission] = mapRowsToSubmissions([liveRow], []);
+    expect(submission.data["No. of Members"]).toBe("1");
   });
 });

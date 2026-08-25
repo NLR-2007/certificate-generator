@@ -81,10 +81,12 @@ export function mapRowsToParticipants(
   for (const row of rows) {
     const leaderId = pickColumn(row, REG_ID_HEADERS);
     const leaderName = pickColumn(row, NAME_HEADERS);
+    let leaderKey = "";
 
     if (leaderId && leaderName) {
       const leader = buildParticipant(leaderId, leaderName, row, defaults);
-      byRegId.set(leader.registration_id.toLowerCase(), leader);
+      leaderKey = leader.registration_id.toLowerCase();
+      byRegId.set(leaderKey, leader);
     }
 
     // Members arrive either in numbered columns or all together in one cell.
@@ -105,10 +107,17 @@ export function mapRowsToParticipants(
 
     for (const member of members) {
       const participant = buildParticipant(member.registrationId, member.name, row, defaults);
+      const key = participant.registration_id.toLowerCase();
+
+      // Teams often list their own leader in the members cell too ("Leader: NLR
+      // (2520030366)"). The leader's dedicated columns are the better record, so
+      // they are not overwritten by their own restatement.
+      if (key === leaderKey) continue;
+
       // A member has no personal email or phone column on a team row.
       participant.email = "";
       participant.phone = "";
-      byRegId.set(participant.registration_id.toLowerCase(), participant);
+      byRegId.set(key, participant);
     }
   }
 

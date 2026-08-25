@@ -25,8 +25,18 @@ const ID_PATTERN = /\d{6,}/;
 const ENTRY_SEPARATORS = /[\n\r;|,]+/;
 const NAME_NOISE = /^[\s\-–—:()[\].#]+|[\s\-–—:()[\].#]+$/g;
 
+/**
+ * A role label the form prepends, as in "Leader: NLR (2520030366)".
+ * It describes the person's place on the team, not their name.
+ */
+const ROLE_PREFIX = /^(?:team\s+)?(?:leader|member|participant|captain)\s*\d*\s*[:\-–—.]\s*/i;
+
 function cleanName(value: string): string {
-  return value.replace(NAME_NOISE, "").replace(/\s{2,}/g, " ").trim();
+  return value
+    .replace(ROLE_PREFIX, "")
+    .replace(NAME_NOISE, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 export function parseCombinedMembers(cell: string): ParsedMember[] {

@@ -4,6 +4,15 @@ export const revalidate = 0;
 import { NextRequest, NextResponse } from "next/server";
 import { getRepository } from "@/lib/db/repository";
 
+/** A sheet row may carry no timestamp, or one Date cannot parse. */
+function formatSubmittedAt(value: string): string {
+  if (!value) return "";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+}
+
 export async function GET(req: NextRequest) {
   try {
     const db = getRepository();
@@ -17,7 +26,7 @@ export async function GET(req: NextRequest) {
     submissions.forEach((sub) => {
       const row = [
         sub.id,
-        new Date(sub.submitted_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+        formatSubmittedAt(sub.submitted_at),
         ...config.fields.map((f) => sub.data[f.id] || ""),
       ];
       csvRows.push(row.map((val) => `"${String(val).replace(/"/g, '""')}"`).join(","));
