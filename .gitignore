@@ -21,3 +21,6 @@ scratch/
 npm-debug.log*
 yarn-error.log*
 .vercel
+
+# isolated dist dir for verification builds (NEXT_DIST_DIR)
+.next-build/
